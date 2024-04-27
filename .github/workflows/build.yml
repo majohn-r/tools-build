@@ -47,7 +47,8 @@ jobs:
       - name: Execute unit tests with code coverage
         run: go test -coverprofile=coverage -covermode=atomic ./...
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@4.0.1
+        uses: codecov/codecov-action@4
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
           file: ./coverage
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
