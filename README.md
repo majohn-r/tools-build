@@ -9,7 +9,11 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/majohn-r/tools-build)](https://goreportcard.com/report/github.com/majohn-r/tools-build)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/majohn-r/tools-build/build.yml?branch=main)](https://github.com/majohn-r/tools-build/actions?query=workflow%3Abuild+branch%3Amain)
 
-This package provides build script tooling for go-based projects. The tooling is in the form of code utilizing [goyek build automation](https://pkg.go.dev/github.com/goyek/goyek/v2). goyek builds are typically set up as tasks, and this project provides some common code to perform the work of the tasks. Here is a sample set of tasks:
+This package provides build script tooling for go-based projects. The tooling is
+in the form of code utilizing [goyek build
+automation](https://pkg.go.dev/github.com/goyek/goyek/v2). goyek builds are
+typically set up as tasks, and this project provides some common code to perform
+the work of the tasks. Here is a sample set of tasks:
 
 ```go
 var (
@@ -128,4 +132,25 @@ else
 fi
 ```
 
-The script employs a **DIR** environment variable for the benefit of the **WorkingDir** function, which is used by this package to find the project's top level directory. If **DIR** is not set as an environment variable, **WorkingDir** will assume that "**..**" is the correct location, which is based on the assumption that the go code running the build is placed in a directory, one level deep, such as **build** (as seen in the line above ```cd "${DIR}/build```). Regardless of whether or not the **DIR** environment variable is set, the **WorkingDir** function looks for the **.git** directory in its candidate value, and it's not found, then the **WorkingDir** function calls **os.Exit** and the build ends.
+The script employs a **DIR** environment variable for the benefit of the
+**WorkingDir** function, which is used by this package to find the project's top
+level directory. If **DIR** is not set as an environment variable,
+**WorkingDir** will assume that "**..**" is the correct location, which is based
+on the assumption that the go code running the build is placed in a directory,
+one level deep, such as **build** (as seen in the line above ```cd
+"${DIR}/build```). Regardless of whether or not the **DIR** environment variable
+is set, the **WorkingDir** function looks for the **.git** directory in its
+candidate value, and it's not found, then the **WorkingDir** function calls
+**os.Exit** and the build ends.
+
+## Opinionated?
+
+Well, yes. I wrote this for _my_ go projects, and, as such, it reflects _my_
+thinking about the proper tooling to use, and how to use that tooling. The
+biggest example of this is probably my use of
+[gocritic](https://github.com/go-critic/go-critic) as the tool called by the
+**Lint** function.
+
+That said, if you find the package useful but don't like some of my choices, you
+can easily create your own functions to replace the ones you don't care for.
+Won't hurt my feeling a bit.
