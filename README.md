@@ -153,4 +153,4 @@ biggest example of this is probably my use of
 
 That said, if you find the package useful but don't like some of my choices, you
 can easily create your own functions to replace the ones you don't care for.
-Won't hurt my feeling a bit.
+Won't hurt my feelings a bit.
