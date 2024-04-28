@@ -834,3 +834,32 @@ func Test_containsBackDir(t *testing.T) {
 		})
 	}
 }
+
+func Test_printBuffer(t *testing.T) {
+	originalPrintLine := printLine
+	defer func() {
+		printLine = originalPrintLine
+	}()
+	tests := map[string]struct {
+		data      string
+		wantPrint bool
+	}{
+		"empty":     {data: "", wantPrint: false},
+		"some data": {data: "123", wantPrint: true},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			gotPrint := false
+			printLine = func(_ ...any) (int, error) {
+				gotPrint = true
+				return 0, nil
+			}
+			buffer := &bytes.Buffer{}
+			buffer.WriteString(tt.data)
+			printBuffer(buffer)
+			if gotPrint != tt.wantPrint {
+				t.Errorf("printBuffer got %t, want %t", gotPrint, tt.wantPrint)
+			}
+		})
+	}
+}

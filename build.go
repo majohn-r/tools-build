@@ -17,8 +17,9 @@ var (
 	fileSystem = afero.NewOsFs()
 	workingDir = ""
 	// function vars make it easy for tests to stub out functionality
-	exit     = os.Exit
-	executor = cmd.Exec
+	exit      = os.Exit
+	executor  = cmd.Exec
+	printLine = fmt.Println
 )
 
 // Clean deletes the named files, which must be located in, or in a subdirectory
@@ -53,7 +54,7 @@ func containsBackDir(f string) bool {
 // Format runs the gofmt tool to repair the formatting of each source file;
 // returns false if the command fails
 func Format(a *goyek.A) bool {
-	fmt.Println("cleaning up source code formatting")
+	printLine("cleaning up source code formatting")
 	return RunCommand(a, "gofmt -e -l -s -w .")
 }
 
@@ -92,8 +93,15 @@ func GenerateDocumentation(a *goyek.A, excludedDirs []string) bool {
 			}
 		}
 	}
-	fmt.Println(o.String())
+	printBuffer(o)
 	return true
+}
+
+func printBuffer(b *bytes.Buffer) {
+	s := b.String()
+	if s != "" {
+		printLine(s)
+	}
 }
 
 // Install runs the command to install the '@latest' version of a specified
@@ -109,7 +117,7 @@ func Lint(a *goyek.A) bool {
 	if !Install(a, "github.com/go-critic/go-critic/cmd/gocritic") {
 		return false
 	}
-	fmt.Println("linting source code")
+	printLine("linting source code")
 	return RunCommand(a, "gocritic check -enableAll ./...")
 }
 
@@ -130,7 +138,7 @@ func NilAway(a *goyek.A) bool {
 	if !Install(a, "go.uber.org/nilaway/cmd/nilaway") {
 		return false
 	}
-	fmt.Println("running nilaway analysis")
+	printLine("running nilaway analysis")
 	return RunCommand(a, "nilaway ./...")
 }
 
@@ -138,14 +146,14 @@ func NilAway(a *goyek.A) bool {
 // success
 func RunCommand(a *goyek.A, command string) bool {
 	outputBuffer := &bytes.Buffer{}
-	defer fmt.Println(outputBuffer.String())
+	defer printBuffer(outputBuffer)
 	return executor(a, command, MakeCmdOptions(outputBuffer)...)
 }
 
 // UnitTests runs all unit tests, with code coverage enabled; returns false on
 // failure
 func UnitTests(a *goyek.A) bool {
-	fmt.Println("running all unit tests")
+	printLine("running all unit tests")
 	return RunCommand(a, "go test -cover ./...")
 }
 
@@ -155,7 +163,7 @@ func VulnerabilityCheck(a *goyek.A) bool {
 	if !Install(a, "golang.org/x/vuln/cmd/govulncheck") {
 		return false
 	}
-	fmt.Println("running vulnerability checks")
+	printLine("running vulnerability checks")
 	return RunCommand(a, "govulncheck -show verbose ./...")
 }
 
