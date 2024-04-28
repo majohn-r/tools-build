@@ -58,6 +58,12 @@ func Format(a *goyek.A) bool {
 	return RunCommand(a, "gofmt -e -l -s -w .")
 }
 
+// Generate runs the 'go generate' tool
+func Generate(a *goyek.A) bool {
+	fmt.Println("running go generate")
+	return RunCommand(a, "go generate -v ./...")
+}
+
 // GenerateCoverageReport runs the unit tests, generating a coverage profile; if
 // the unit tests all succeed, generates the report as HTML to be displayed in
 // the current browser window. Returns false if either the unit tests or the

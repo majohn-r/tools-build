@@ -863,3 +863,35 @@ func Test_printBuffer(t *testing.T) {
 		})
 	}
 }
+
+func TestGenerate(t *testing.T) {
+	originalWorkingDir := workingDir
+	originalExecutor := executor
+	defer func() {
+		workingDir = originalWorkingDir
+		executor = originalExecutor
+	}()
+	workingDir = "work"
+	tests := map[string]struct {
+		shouldSucceed bool
+		want          bool
+	}{
+		"fail":    {},
+		"succeed": {shouldSucceed: true, want: true},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			var gotCmd string
+			executor = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
+				gotCmd = cmd
+				return tt.shouldSucceed
+			}
+			if got := Generate(nil); got != tt.want {
+				t.Errorf("Generate() = %v, want %v", got, tt.want)
+			}
+			if gotCmd != "go generate -v ./..." {
+				t.Errorf("Generate() = %q, want %q", gotCmd, "go generate -v ./...")
+			}
+		})
+	}
+}
