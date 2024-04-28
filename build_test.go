@@ -17,27 +17,43 @@ import (
 
 func TestClean(t *testing.T) {
 	originalFileSystem := fileSystem
+	originalWorkingDir := workingDir
+	originalExit := exit
 	defer func() {
 		fileSystem = originalFileSystem
+		workingDir = originalWorkingDir
+		exit = originalExit
 	}()
 	fileSystem = afero.NewMemMapFs()
-	afero.WriteFile(fileSystem, "myFile", []byte("foo"), 0o644)
-	afero.WriteFile(fileSystem, "myOtherFile", []byte(""), 0o644)
+	fileSystem.MkdirAll("a/b/c", 0o755)
+	workingDir = "a/b/c"
+	afero.WriteFile(fileSystem, "a/b/c/myFile", []byte("foo"), 0o644)
+	afero.WriteFile(fileSystem, "a/b/c/myOtherFile", []byte(""), 0o644)
 	tests := map[string]struct {
-		files []string
+		files          []string
+		wantExitCalled bool
 	}{
-		"no files":    {files: nil},
-		"no problems": {files: []string{"myFile", "myOtherFile", "myNonExistentFile"}},
+		"no files":     {files: nil},
+		"no problems":  {files: []string{"myFile", "myOtherFile", "myNonExistentFile"}},
+		"illegal path": {files: []string{"foo/../../bar"}, wantExitCalled: true},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
+			gotExitCalled := false
+			exit = func(_ int) {
+				gotExitCalled = true
+			}
 			Clean(tt.files)
 			for _, file := range tt.files {
-				if exists, err := afero.Exists(fileSystem, file); err != nil {
-					t.Errorf("Clean: something went wrong verifying the non-existence of %q: %v", file, err)
+				f := filepath.Join(workingDir, file)
+				if exists, err := afero.Exists(fileSystem, f); err != nil {
+					t.Errorf("Clean: something went wrong verifying the non-existence of %q: %v", f, err)
 				} else if exists {
-					t.Errorf("Clean failed to delete %q", file)
+					t.Errorf("Clean failed to delete %q", f)
 				}
+			}
+			if gotExitCalled != tt.wantExitCalled {
+				t.Errorf("Clean exit called %t, want %t", gotExitCalled, tt.wantExitCalled)
 			}
 		})
 	}
@@ -784,6 +800,36 @@ func TestVulnerabilityCheck(t *testing.T) {
 			}
 			if !reflect.DeepEqual(gotCommands, tt.wantCommands) {
 				t.Errorf("VulnerabilityCheck() commands = %v, want %v", gotCommands, tt.wantCommands)
+			}
+		})
+	}
+}
+
+func Test_containsBackDir(t *testing.T) {
+	tests := map[string]struct {
+		f    string
+		want bool
+	}{
+		"empty":     {f: "", want: false},
+		"backdir1":  {f: "..", want: true},
+		"backdir2":  {f: "../", want: true},
+		"backdir3":  {f: "..\\", want: true},
+		"backdir4":  {f: "\\..", want: true},
+		"backdir5":  {f: "/..", want: true},
+		"complex1":  {f: "a/b/c/../e/f/g", want: true},
+		"complex2":  {f: "../a/b/c/e/f/g", want: true},
+		"harmless1": {f: "a/b..c/d/e/f", want: false},
+		"harmless2": {f: "a/b..", want: false},
+		"harmless3": {f: "a/..b", want: false},
+		"harmless4": {f: "a/b../c", want: false},
+		"harmless5": {f: "a/..b/c", want: false},
+		"harmless6": {f: "b../c", want: false},
+		"harmless7": {f: "..b/c", want: false},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := containsBackDir(tt.f); got != tt.want {
+				t.Errorf("containsBackDir() = %v, want %v", got, tt.want)
 			}
 		})
 	}

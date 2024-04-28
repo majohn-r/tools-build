@@ -21,11 +21,33 @@ var (
 	executor = cmd.Exec
 )
 
-// Clean deletes the named files
+// Clean deletes the named files, which must be located in, or in a subdirectory
+// of, WorkingDir(). If any of the named files contains a back directory (".."),
+// calls os.Exit()
 func Clean(files []string) {
 	for _, file := range files {
-		fileSystem.Remove(file)
+		if containsBackDir(file) {
+			fmt.Fprintf(os.Stderr, "file %q will not be removed, exiting the build", file)
+			exit(1)
+		}
+		fileSystem.Remove(filepath.Join(WorkingDir(), file))
 	}
+}
+
+func containsBackDir(f string) bool {
+	if !strings.Contains(f, "..") {
+		return false
+	}
+	if f == ".." {
+		return true
+	}
+	dir, file := filepath.Split(f)
+	if file == ".." {
+		return true
+	}
+	dir = strings.ReplaceAll(dir, "\\", "/")
+	dir = strings.TrimSuffix(dir, "/")
+	return containsBackDir(dir)
 }
 
 // Format runs the gofmt tool to repair the formatting of each source file;
@@ -147,7 +169,7 @@ func WorkingDir() string {
 			candidate = dir
 		}
 		if err := isAcceptableWorkingDir(candidate); err != nil {
-			fmt.Println(err.Error())
+			fmt.Fprintln(os.Stderr, err.Error())
 			exit(1)
 		}
 		// ok, it's acceptable
