@@ -28,7 +28,7 @@ var (
 func Clean(files []string) {
 	for _, file := range files {
 		if containsBackDir(file) {
-			fmt.Fprintf(os.Stderr, "file %q will not be removed, exiting the build", file)
+			fmt.Fprintf(os.Stderr, "file %q will not be removed, exiting the build\n", file)
 			exit(1)
 		}
 		fileSystem.Remove(filepath.Join(WorkingDir(), file))
@@ -104,9 +104,20 @@ func GenerateDocumentation(a *goyek.A, excludedDirs []string) bool {
 }
 
 func printBuffer(b *bytes.Buffer) {
-	s := b.String()
+	s := eatTrailingEOL(b.String())
 	if s != "" {
 		printLine(s)
+	}
+}
+
+func eatTrailingEOL(s string) string {
+	switch {
+	case strings.HasSuffix(s, "\n"):
+		return eatTrailingEOL(strings.TrimSuffix(s, "\n"))
+	case strings.HasSuffix(s, "\r"):
+		return eatTrailingEOL(strings.TrimSuffix(s, "\r"))
+	default:
+		return s
 	}
 }
 

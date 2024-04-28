@@ -846,6 +846,7 @@ func Test_printBuffer(t *testing.T) {
 	}{
 		"empty":     {data: "", wantPrint: false},
 		"some data": {data: "123", wantPrint: true},
+		"newlines":  {data: "\n\r", wantPrint: false},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -891,6 +892,25 @@ func TestGenerate(t *testing.T) {
 			}
 			if gotCmd != "go generate -v ./..." {
 				t.Errorf("Generate() = %q, want %q", gotCmd, "go generate -v ./...")
+			}
+		})
+	}
+}
+
+func Test_eatTrailingEOL(t *testing.T) {
+	tests := map[string]struct {
+		s    string
+		want string
+	}{
+		"empty string":         {s: "", want: ""},
+		"embedded newlines":    {s: "abc\ndef\rghi", want: "abc\ndef\rghi"},
+		"many newlines":        {s: "abcdef\n\n\r\r\n\r\n", want: "abcdef"},
+		"nothing but newlines": {s: "\n\r\n\r\n\r\r\r\n\n\n\r", want: ""},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := eatTrailingEOL(tt.s); got != tt.want {
+				t.Errorf("eatTrailingEOL() = %v, want %v", got, tt.want)
 			}
 		})
 	}
