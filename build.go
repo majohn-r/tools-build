@@ -174,6 +174,17 @@ func UnitTests(a *goyek.A) bool {
 	return RunCommand(a, "go test -cover ./...")
 }
 
+// UpdateDependencies updates module dependencies and prunes the modified go.mod
+// and go.sum files
+func UpdateDependencies(a *goyek.A) bool {
+	fmt.Println("updating dependencies")
+	if !RunCommand(a, "go get -u ./...") {
+		return false
+	}
+	fmt.Println("pruning go.mod and go.sum")
+	return RunCommand(a, "go mod tidy")
+}
+
 // VulnerabilityCheck runs the govulncheck tool, which checks for unresolved
 // known vulnerabilities in the libraries used; returns false on failure
 func VulnerabilityCheck(a *goyek.A) bool {

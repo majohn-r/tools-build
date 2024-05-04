@@ -915,3 +915,60 @@ func Test_eatTrailingEOL(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateDependencies(t *testing.T) {
+	originalWorkingDir := workingDir
+	originalExecutor := executor
+	defer func() {
+		workingDir = originalWorkingDir
+		executor = originalExecutor
+	}()
+	// not used, and keeps WorkingDir() from getting exercised
+	workingDir = "work"
+	tests := map[string]struct {
+		getSucceeds  bool
+		tidySucceeds bool
+		wantCommands []string
+		want         bool
+	}{
+		"go get fails": {
+			getSucceeds:  false,
+			wantCommands: []string{"go get -u ./..."},
+			want:         false,
+		},
+		"go mod tidy fails": {
+			getSucceeds:  true,
+			tidySucceeds: false,
+			wantCommands: []string{"go get -u ./...", "go mod tidy"},
+			want:         false,
+		},
+		"go mod tidy succeeds": {
+			getSucceeds:  true,
+			tidySucceeds: true,
+			wantCommands: []string{"go get -u ./...", "go mod tidy"},
+			want:         true,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			gotCommands := []string{}
+			executor = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
+				gotCommands = append(gotCommands, cmd)
+				if strings.HasPrefix(cmd, "go get") {
+					return tt.getSucceeds
+				}
+				if strings.HasPrefix(cmd, "go mod") {
+					return tt.tidySucceeds
+				}
+				t.Errorf("UpdateDependencies() sent unexpected command: %q", cmd)
+				return false
+			}
+			if got := UpdateDependencies(nil); got != tt.want {
+				t.Errorf("UpdateDependencies() = %v, want %v", got, tt.want)
+			}
+			if !reflect.DeepEqual(gotCommands, tt.wantCommands) {
+				t.Errorf("UpdateDependencies() commands = %v, want %v", gotCommands, tt.wantCommands)
+			}
+		})
+	}
+}
