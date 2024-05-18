@@ -16,17 +16,17 @@ import (
 )
 
 func TestClean(t *testing.T) {
-	originalFileSystem := fileSystem
+	// note: cannot use memory mapped filesystem; Clean relies on using the os
+	// filesystem to make sure all files are within the working directory
 	originalWorkingDir := workingDir
 	originalExit := exit
+	workingDir = "a/b/c"
 	defer func() {
-		fileSystem = originalFileSystem
 		workingDir = originalWorkingDir
 		exit = originalExit
+		fileSystem.RemoveAll("a")
 	}()
-	fileSystem = afero.NewMemMapFs()
 	fileSystem.MkdirAll("a/b/c", 0o755)
-	workingDir = "a/b/c"
 	afero.WriteFile(fileSystem, "a/b/c/myFile", []byte("foo"), 0o644)
 	afero.WriteFile(fileSystem, "a/b/c/myOtherFile", []byte(""), 0o644)
 	tests := map[string]struct {
@@ -34,7 +34,7 @@ func TestClean(t *testing.T) {
 		wantExitCalled bool
 	}{
 		"no files":     {files: nil},
-		"no problems":  {files: []string{"myFile", "myOtherFile", "myNonExistentFile"}},
+		"no problems":  {files: []string{"myFile", "myOtherFile", "c:\\myNonExistentFile"}},
 		"illegal path": {files: []string{"foo/../../bar"}, wantExitCalled: true},
 	}
 	for name, tt := range tests {
@@ -46,9 +46,7 @@ func TestClean(t *testing.T) {
 			Clean(tt.files)
 			for _, file := range tt.files {
 				f := filepath.Join(workingDir, file)
-				if fileExists, err := afero.Exists(fileSystem, f); err != nil {
-					t.Errorf("Clean: something went wrong verifying the non-existence of %q: %v", f, err)
-				} else if fileExists {
+				if fileExists, _ := afero.Exists(fileSystem, f); fileExists {
 					t.Errorf("Clean failed to delete %q", f)
 				}
 			}

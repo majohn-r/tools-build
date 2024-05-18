@@ -27,12 +27,17 @@ var (
 // calls os.Exit(); this is to prevent callers from deceptively removing files
 // they shouldn't.
 func Clean(files []string) {
+	workingFS := os.DirFS(WorkingDir())
 	for _, file := range files {
 		if containsBackDir(file) {
 			fmt.Fprintf(os.Stderr, "file %q will not be removed, exiting the build\n", file)
 			exit(1)
 		}
-		fileSystem.Remove(filepath.Join(WorkingDir(), file))
+		openFile, err := workingFS.Open(file)
+		if err == nil {
+			openFile.Close()
+			fileSystem.Remove(filepath.Join(WorkingDir(), file))
+		}
 	}
 }
 
@@ -40,9 +45,7 @@ func containsBackDir(path string) bool {
 	if !strings.Contains(path, "..") {
 		return false
 	}
-	if strings.Contains(path, "\\") {
-		path = strings.ReplaceAll(path, "\\", "/")
-	}
+	path = canonicalizePath(path)
 	if path == ".." {
 		return true
 	}
@@ -51,6 +54,13 @@ func containsBackDir(path string) bool {
 		return true
 	}
 	return containsBackDir(strings.TrimSuffix(dir, "/"))
+}
+
+func canonicalizePath(path string) string {
+	if strings.Contains(path, "\\") {
+		return strings.ReplaceAll(path, "\\", "/")
+	}
+	return path
 }
 
 // Format runs the gofmt tool to repair the formatting of each source file;
@@ -251,15 +261,12 @@ func allDirs(top string) ([]string, error) {
 	if !topIsDir {
 		return nil, fmt.Errorf("%q is not a directory", top)
 	}
-	if strings.Contains(top, "\\") {
-		top = strings.ReplaceAll(top, "\\", "/")
-	}
+	top = canonicalizePath(top)
 	entries, _ := afero.ReadDir(fileSystem, top)
 	dirs := []string{top}
 	for _, entry := range entries {
 		if entry.IsDir() {
-			subDirectory := filepath.Join(top, entry.Name())
-			subDirs, _ := allDirs(subDirectory)
+			subDirs, _ := allDirs(filepath.Join(top, entry.Name()))
 			dirs = append(dirs, subDirs...)
 		}
 	}
