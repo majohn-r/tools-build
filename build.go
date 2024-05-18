@@ -24,7 +24,8 @@ var (
 
 // Clean deletes the named files, which must be located in, or in a subdirectory
 // of, WorkingDir(). If any of the named files contains a back directory (".."),
-// calls os.Exit()
+// calls os.Exit(); this is to prevent callers from deceptively removing files
+// they shouldn't.
 func Clean(files []string) {
 	for _, file := range files {
 		if containsBackDir(file) {
@@ -35,20 +36,21 @@ func Clean(files []string) {
 	}
 }
 
-func containsBackDir(f string) bool {
-	if !strings.Contains(f, "..") {
+func containsBackDir(path string) bool {
+	if !strings.Contains(path, "..") {
 		return false
 	}
-	if f == ".." {
+	if strings.Contains(path, "\\") {
+		path = strings.ReplaceAll(path, "\\", "/")
+	}
+	if path == ".." {
 		return true
 	}
-	dir, file := filepath.Split(f)
+	dir, file := filepath.Split(path)
 	if file == ".." {
 		return true
 	}
-	dir = strings.ReplaceAll(dir, "\\", "/")
-	dir = strings.TrimSuffix(dir, "/")
-	return containsBackDir(dir)
+	return containsBackDir(strings.TrimSuffix(dir, "/"))
 }
 
 // Format runs the gofmt tool to repair the formatting of each source file;
@@ -68,13 +70,13 @@ func Generate(a *goyek.A) bool {
 // the unit tests all succeed, generates the report as HTML to be displayed in
 // the current browser window. Returns false if either the unit tests or the
 // coverage report display fails
-func GenerateCoverageReport(a *goyek.A, file string) bool {
-	fmt.Printf("executing unit tests, writing coverage data to %q\n", file)
-	if !RunCommand(a, fmt.Sprintf("go test -coverprofile=%s ./...", file)) {
+func GenerateCoverageReport(a *goyek.A, coverageDataFile string) bool {
+	fmt.Printf("executing unit tests, writing coverage data to %q\n", coverageDataFile)
+	if !RunCommand(a, fmt.Sprintf("go test -coverprofile=%s ./...", coverageDataFile)) {
 		return false
 	}
-	fmt.Printf("displaying coverage report from %q\n", file)
-	return RunCommand(a, fmt.Sprintf("go tool cover -html=%s", file))
+	fmt.Printf("displaying coverage report from %q\n", coverageDataFile)
+	return RunCommand(a, fmt.Sprintf("go tool cover -html=%s", coverageDataFile))
 }
 
 // GenerateDocumentation generates documentation of the code, outputting it to
@@ -86,14 +88,14 @@ func GenerateDocumentation(a *goyek.A, excludedDirs []string) bool {
 	}
 	o := &bytes.Buffer{}
 	for _, dir := range dirs {
-		shouldDocument := true
+		documentSources := true
 		for _, dirToExclude := range excludedDirs {
 			if dir == dirToExclude {
-				shouldDocument = false
+				documentSources = false
 				break
 			}
 		}
-		if shouldDocument {
+		if documentSources {
 			if !executor(a, fmt.Sprintf("go doc -all ./%s", dir), MakeCmdOptions(o)...) {
 				return false
 			}
@@ -141,12 +143,12 @@ func Lint(a *goyek.A) bool {
 // MakeCmdOptions creates a slice of cmd.Option instances consisting of the
 // working directory, stderr (using the provided buffer), and stdout (using the
 // same provided buffer)
-func MakeCmdOptions(b *bytes.Buffer) []cmd.Option {
-	o := make([]cmd.Option, 3)
-	o[0] = cmd.Dir(WorkingDir())
-	o[1] = cmd.Stderr(b)
-	o[2] = cmd.Stdout(b)
-	return o
+func MakeCmdOptions(buffer *bytes.Buffer) []cmd.Option {
+	options := make([]cmd.Option, 3)
+	options[0] = cmd.Dir(WorkingDir())
+	options[1] = cmd.Stderr(buffer)
+	options[2] = cmd.Stdout(buffer)
+	return options
 }
 
 // NilAway runs the nilaway tool, which attempts, via static analysis, to detect
@@ -201,11 +203,10 @@ func VulnerabilityCheck(a *goyek.A) bool {
 func WorkingDir() string {
 	if workingDir == "" {
 		candidate := ".."
-		if dir, ok := os.LookupEnv("DIR"); ok {
-			candidate = dir
+		if dirValue, dirExists := os.LookupEnv("DIR"); dirExists {
+			candidate = dirValue
 		}
-		if err := isAcceptableWorkingDir(candidate); err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
+		if isUnacceptableWorkingDir(candidate) {
 			exit(1)
 		}
 		// ok, it's acceptable
@@ -214,44 +215,51 @@ func WorkingDir() string {
 	return workingDir
 }
 
-func isAcceptableWorkingDir(candidate string) error {
+func isUnacceptableWorkingDir(candidate string) bool {
 	if candidate == "" {
-		return fmt.Errorf("empty value")
+		fmt.Fprintln(os.Stderr, "code error: empty candidate value passed to isAcceptableWorkingDir")
+		return true
 	}
-	ok, err := afero.IsDir(fileSystem, candidate)
+	if isInvalidDir(candidate) {
+		return true
+	}
+	if isInvalidDir(filepath.Join(candidate, ".git")) {
+		return true
+	}
+	return false // directory is appropriate to use
+}
+
+func isInvalidDir(path string) bool {
+	pathIsConfirmedDir, err := afero.IsDir(fileSystem, path)
 	if err != nil {
-		return fmt.Errorf("validation error %v for %q", err, candidate)
+		fmt.Fprintf(os.Stderr, "validation error %v for %q", err, path)
+		return true
 	}
-	if !ok {
-		return fmt.Errorf("not a directory: %q", candidate)
+	if !pathIsConfirmedDir {
+		fmt.Fprintf(os.Stderr, "not a directory: %q", path)
+		return true
 	}
-	gitDir := filepath.Join(candidate, ".git")
-	ok, err = afero.IsDir(fileSystem, gitDir)
-	if err != nil {
-		return fmt.Errorf("validation error %v for %q", err, gitDir)
-	}
-	if !ok {
-		return fmt.Errorf("not a directory: %q", gitDir)
-	}
-	// ok, it's acceptable
-	return nil
+	return false
 }
 
 func allDirs(top string) ([]string, error) {
-	var entries []fs.FileInfo
+	var topIsDir bool
 	var err error
-	if entries, err = afero.ReadDir(fileSystem, top); err != nil {
+	if topIsDir, err = afero.IsDir(fileSystem, top); err != nil {
 		return nil, err
 	}
-	dirs := []string{strings.ReplaceAll(top, "\\", "/")}
+	if !topIsDir {
+		return nil, fmt.Errorf("%q is not a directory", top)
+	}
+	if strings.Contains(top, "\\") {
+		top = strings.ReplaceAll(top, "\\", "/")
+	}
+	entries, _ := afero.ReadDir(fileSystem, top)
+	dirs := []string{top}
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		f := filepath.Join(top, entry.Name())
-		var subDirs []string
-		// possibility of an error in accessing subdirectories is virtually non-existent
-		if subDirs, err = allDirs(f); err == nil {
+		if entry.IsDir() {
+			subDirectory := filepath.Join(top, entry.Name())
+			subDirs, _ := allDirs(subDirectory)
 			dirs = append(dirs, subDirs...)
 		}
 	}

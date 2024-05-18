@@ -46,9 +46,9 @@ func TestClean(t *testing.T) {
 			Clean(tt.files)
 			for _, file := range tt.files {
 				f := filepath.Join(workingDir, file)
-				if exists, err := afero.Exists(fileSystem, f); err != nil {
+				if fileExists, err := afero.Exists(fileSystem, f); err != nil {
 					t.Errorf("Clean: something went wrong verifying the non-existence of %q: %v", f, err)
-				} else if exists {
+				} else if fileExists {
 					t.Errorf("Clean failed to delete %q", f)
 				}
 			}
@@ -72,19 +72,19 @@ func Test_isAcceptableWorkingDir(t *testing.T) {
 	afero.WriteFile(fileSystem, "not a directory", []byte("gibberish"), 0o644)
 	tests := map[string]struct {
 		candidate string
-		wantErr   bool
+		want      bool
 	}{
-		"empty string":            {candidate: "", wantErr: true},
-		"non-existent":            {candidate: "no such file", wantErr: true},
-		"not a dir":               {candidate: "not a directory", wantErr: true},
-		"no .git":                 {candidate: "empty", wantErr: true},
-		".git is not a directory": {candidate: "defective", wantErr: true},
-		"happy path":              {candidate: "successful", wantErr: false},
+		"empty string":            {candidate: "", want: true},
+		"non-existent":            {candidate: "no such file", want: true},
+		"not a dir":               {candidate: "not a directory", want: true},
+		"no .git":                 {candidate: "empty", want: true},
+		".git is not a directory": {candidate: "defective", want: true},
+		"happy path":              {candidate: "successful", want: false},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			if err := isAcceptableWorkingDir(tt.candidate); (err != nil) != tt.wantErr {
-				t.Errorf("isAcceptableWorkingDir() error = %v, wantErr %v", err, tt.wantErr)
+			if got := isUnacceptableWorkingDir(tt.candidate); got != tt.want {
+				t.Errorf("isAcceptableWorkingDir() %t, want %t", got, tt.want)
 			}
 		})
 	}
@@ -93,13 +93,13 @@ func Test_isAcceptableWorkingDir(t *testing.T) {
 func TestWorkingDir(t *testing.T) {
 	originalFileSystem := fileSystem
 	originalExit := exit
-	originalDir, originalOk := os.LookupEnv("DIR")
+	originalDirValue, originalDirExists := os.LookupEnv("DIR")
 	originalWorkingDir := workingDir
 	defer func() {
 		fileSystem = originalFileSystem
 		exit = originalExit
-		if originalOk {
-			os.Setenv("DIR", originalDir)
+		if originalDirExists {
+			os.Setenv("DIR", originalDirValue)
 		} else {
 			os.Unsetenv("DIR")
 		}
@@ -325,8 +325,9 @@ func Test_allDirs(t *testing.T) {
 		want    []string
 		wantErr bool
 	}{
-		"error":   {top: "no such dir", want: nil, wantErr: true},
-		"success": {top: "a", want: []string{"a", "a/b", "a/b/c", "a/b/c/d", "a/b/c/e"}},
+		"error":     {top: "no such dir", want: nil, wantErr: true},
+		"not a dir": {top: "a/b/c/f", want: nil, wantErr: true},
+		"success":   {top: "a", want: []string{"a", "a/b", "a/b/c", "a/b/c/d", "a/b/c/e"}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
