@@ -29,7 +29,7 @@ var (
 func Clean(files []string) {
 	workingFS := os.DirFS(WorkingDir())
 	for _, file := range files {
-		if containsBackDir(file) {
+		if isIllegalFileName(file) {
 			fmt.Fprintf(os.Stderr, "file %q will not be removed, exiting the build\n", file)
 			exit(1)
 		}
@@ -41,19 +41,26 @@ func Clean(files []string) {
 	}
 }
 
-func containsBackDir(path string) bool {
-	if !strings.Contains(path, "..") {
+func isIllegalFileName(path string) bool {
+	return path == "" || isMalformedFileName(path)
+}
+
+func isMalformedFileName(path string) bool {
+	if path == "" {
 		return false
 	}
-	path = canonicalizePath(path)
-	if path == ".." {
+	if startsWith(path, "/") || startsWith(path, "\\") {
 		return true
 	}
-	dir, file := filepath.Split(path)
+	dir, file := filepath.Split(canonicalizePath(path))
 	if file == ".." {
 		return true
 	}
-	return containsBackDir(strings.TrimSuffix(dir, "/"))
+	if dir == path && file == "" {
+		// happens when the original path begins with a drive letter and colon
+		return true
+	}
+	return isMalformedFileName(strings.TrimSuffix(dir, "/"))
 }
 
 func canonicalizePath(path string) string {
@@ -81,6 +88,10 @@ func Generate(a *goyek.A) bool {
 // the current browser window. Returns false if either the unit tests or the
 // coverage report display fails
 func GenerateCoverageReport(a *goyek.A, coverageDataFile string) bool {
+	if isIllegalFileName(coverageDataFile) {
+		fmt.Fprintf(os.Stderr, "cannot accept %q as a valid file name to which coverage data can be written", coverageDataFile)
+		return false
+	}
 	fmt.Printf("executing unit tests, writing coverage data to %q\n", coverageDataFile)
 	if !RunCommand(a, fmt.Sprintf("go test -coverprofile=%s ./...", coverageDataFile)) {
 		return false

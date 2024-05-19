@@ -33,9 +33,26 @@ func TestClean(t *testing.T) {
 		files          []string
 		wantExitCalled bool
 	}{
-		"no files":     {files: nil},
-		"no problems":  {files: []string{"myFile", "myOtherFile", "c:\\myNonExistentFile"}},
-		"illegal path": {files: []string{"foo/../../bar"}, wantExitCalled: true},
+		"no files": {
+			files:          nil,
+			wantExitCalled: false,
+		},
+		"empty file": {
+			files:          []string{""},
+			wantExitCalled: true,
+		},
+		"file with drive letter": {
+			files:          []string{"c:\\myNonExistentFile"},
+			wantExitCalled: true,
+		},
+		"no problems": {
+			files:          []string{"myFile", "myOtherFile"},
+			wantExitCalled: false,
+		},
+		"illegal path": {
+			files:          []string{"foo/../../bar"},
+			wantExitCalled: true,
+		},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -44,14 +61,16 @@ func TestClean(t *testing.T) {
 				gotExitCalled = true
 			}
 			Clean(tt.files)
-			for _, file := range tt.files {
-				f := filepath.Join(workingDir, file)
-				if fileExists, _ := afero.Exists(fileSystem, f); fileExists {
-					t.Errorf("Clean failed to delete %q", f)
-				}
-			}
 			if gotExitCalled != tt.wantExitCalled {
 				t.Errorf("Clean exit called %t, want %t", gotExitCalled, tt.wantExitCalled)
+			}
+			if !gotExitCalled {
+				for _, file := range tt.files {
+					f := filepath.Join(workingDir, file)
+					if fileExists, _ := afero.Exists(fileSystem, f); fileExists {
+						t.Errorf("Clean failed to delete %q", f)
+					}
+				}
 			}
 		})
 	}
@@ -251,9 +270,46 @@ func TestGenerateCoverageReport(t *testing.T) {
 		wantDisplayCommand string
 		want               bool
 	}{
+		"empty file name": {
+			file:               "",
+			unitTestsSucceed:   false,
+			displaySucceeds:    false,
+			wantDisplayCalled:  false,
+			wantTestCommand:    "",
+			wantDisplayCommand: "",
+			want:               false,
+		},
+		"malicious file name": {
+			file:               "../../bar",
+			unitTestsSucceed:   false,
+			displaySucceeds:    false,
+			wantDisplayCalled:  false,
+			wantTestCommand:    "",
+			wantDisplayCommand: "",
+			want:               false,
+		},
+		"absolute file 1": {
+			file:               "/bar",
+			unitTestsSucceed:   false,
+			displaySucceeds:    false,
+			wantDisplayCalled:  false,
+			wantTestCommand:    "",
+			wantDisplayCommand: "",
+			want:               false,
+		},
+		"absolute file 2": {
+			file:               "c:/bar",
+			unitTestsSucceed:   false,
+			displaySucceeds:    false,
+			wantDisplayCalled:  false,
+			wantTestCommand:    "",
+			wantDisplayCommand: "",
+			want:               false,
+		},
 		"tests fail": {
 			file:            "coverage.txt",
 			wantTestCommand: "go test -coverprofile=coverage.txt ./...",
+			want:            false,
 		},
 		"tests succeed, display fails": {
 			file:               "coverage.txt",
@@ -261,6 +317,7 @@ func TestGenerateCoverageReport(t *testing.T) {
 			wantDisplayCalled:  true,
 			wantTestCommand:    "go test -coverprofile=coverage.txt ./...",
 			wantDisplayCommand: "go tool cover -html=coverage.txt",
+			want:               false,
 		},
 		"success": {
 			file:               "coverage.txt",
@@ -804,31 +861,34 @@ func TestVulnerabilityCheck(t *testing.T) {
 	}
 }
 
-func Test_containsBackDir(t *testing.T) {
+func Test_isMalformedFileName(t *testing.T) {
 	tests := map[string]struct {
 		f    string
 		want bool
 	}{
-		"empty":     {f: "", want: false},
-		"backdir1":  {f: "..", want: true},
-		"backdir2":  {f: "../", want: true},
-		"backdir3":  {f: "..\\", want: true},
-		"backdir4":  {f: "\\..", want: true},
-		"backdir5":  {f: "/..", want: true},
-		"complex1":  {f: "a/b/c/../e/f/g", want: true},
-		"complex2":  {f: "../a/b/c/e/f/g", want: true},
-		"harmless1": {f: "a/b..c/d/e/f", want: false},
-		"harmless2": {f: "a/b..", want: false},
-		"harmless3": {f: "a/..b", want: false},
-		"harmless4": {f: "a/b../c", want: false},
-		"harmless5": {f: "a/..b/c", want: false},
-		"harmless6": {f: "b../c", want: false},
-		"harmless7": {f: "..b/c", want: false},
+		"empty":                    {f: "", want: false},
+		"backdir1":                 {f: "..", want: true},
+		"backdir2":                 {f: "../", want: true},
+		"backdir3":                 {f: "..\\", want: true},
+		"backdir4":                 {f: "\\..", want: true},
+		"backdir5":                 {f: "/..", want: true},
+		"complex1":                 {f: "a/b/c/../e/f/g", want: true},
+		"complex2":                 {f: "../a/b/c/e/f/g", want: true},
+		"startsWithBackslash":      {f: "\\a\\b\\c", want: true},
+		"startsWithSlash":          {f: "/a/b/c", want: true},
+		"startsWithOldSchoolDrive": {f: "c:/foo/bar/txt", want: true},
+		"harmless1":                {f: "a/b..c/d/e/f", want: false},
+		"harmless2":                {f: "a/b..", want: false},
+		"harmless3":                {f: "a/..b", want: false},
+		"harmless4":                {f: "a/b../c", want: false},
+		"harmless5":                {f: "a/..b/c", want: false},
+		"harmless6":                {f: "b../c", want: false},
+		"harmless7":                {f: "..b/c", want: false},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			if got := containsBackDir(tt.f); got != tt.want {
-				t.Errorf("containsBackDir() = %v, want %v", got, tt.want)
+			if got := isMalformedFileName(tt.f); got != tt.want {
+				t.Errorf("isMalformedFileName() = %v, want %v", got, tt.want)
 			}
 		})
 	}
