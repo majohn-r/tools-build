@@ -6,6 +6,10 @@ set -o pipefail
 
 echo "clean"
 rm -f coverage.out go.work.sum
+echo "updating dependencies"
+go get -u ./...
+echo "pruning go.mod and go.sum"
+go mod tidy
 echo "lint"
 go install -v github.com/go-critic/go-critic/cmd/gocritic@latest
 gocritic check -enableAll ./...
