@@ -79,8 +79,8 @@ func Format(a *goyek.A) bool {
 
 // Generate runs the 'go generate' tool
 func Generate(a *goyek.A) bool {
-	fmt.Println("running go generate")
-	return RunCommand(a, "go generate -v ./...")
+	printLine("running go generate")
+	return RunCommand(a, "go generate -x ./...")
 }
 
 // GenerateCoverageReport runs the unit tests, generating a coverage profile; if
@@ -200,11 +200,11 @@ func UnitTests(a *goyek.A) bool {
 // UpdateDependencies updates module dependencies and prunes the modified go.mod
 // and go.sum files
 func UpdateDependencies(a *goyek.A) bool {
-	fmt.Println("updating dependencies")
+	printLine("updating dependencies")
 	if !RunCommand(a, "go get -u ./...") {
 		return false
 	}
-	fmt.Println("pruning go.mod and go.sum")
+	printLine("pruning go.mod and go.sum")
 	return RunCommand(a, "go mod tidy")
 }
 

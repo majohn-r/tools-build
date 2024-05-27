@@ -949,8 +949,8 @@ func TestGenerate(t *testing.T) {
 			if got := Generate(nil); got != tt.want {
 				t.Errorf("Generate() = %v, want %v", got, tt.want)
 			}
-			if gotCmd != "go generate -v ./..." {
-				t.Errorf("Generate() = %q, want %q", gotCmd, "go generate -v ./...")
+			if gotCmd != "go generate -x ./..." {
+				t.Errorf("Generate() = %q, want %q", gotCmd, "go generate -x ./...")
 			}
 		})
 	}
