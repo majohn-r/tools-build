@@ -212,9 +212,10 @@ func UpdateDependencies(a *goyek.A) bool {
 	getCommand := directedCommand{command: "go get -u ./..."}
 	tidyCommand := directedCommand{command: "go mod tidy"}
 	for _, dir := range dirs {
-		getCommand.dir = dir
-		tidyCommand.dir = dir
-		fmt.Printf("updating dependencies in folder %q", dir)
+		path := filepath.Join(WorkingDir(), dir)
+		getCommand.dir = path
+		tidyCommand.dir = path
+		fmt.Printf("updating dependencies in folder %q", path)
 		if !getCommand.execute(a) {
 			return false
 		}
