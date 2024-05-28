@@ -215,11 +215,11 @@ func UpdateDependencies(a *goyek.A) bool {
 		path := filepath.Join(WorkingDir(), dir)
 		getCommand.dir = path
 		tidyCommand.dir = path
-		fmt.Printf("updating dependencies in folder %q", path)
+		fmt.Printf("%q: updating dependencies\n", path)
 		if !getCommand.execute(a) {
 			return false
 		}
-		printLine("pruning go.mod and go.sum")
+		fmt.Printf("%q: pruning go.mod and go.sum\n", path)
 		if !tidyCommand.execute(a) {
 			return false
 		}
