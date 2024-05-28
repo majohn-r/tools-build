@@ -160,35 +160,6 @@ func TestWorkingDir(t *testing.T) {
 	}
 }
 
-func TestMakeCmdOptions(t *testing.T) {
-	originalWorkingDir := workingDir
-	defer func() {
-		workingDir = originalWorkingDir
-	}()
-	workingDir = "work"
-	stdBuffer := &bytes.Buffer{}
-	tests := map[string]struct {
-		b     *bytes.Buffer
-		wantO []cmd.Option
-	}{
-		"typical": {
-			b: stdBuffer,
-			wantO: []cmd.Option{
-				cmd.Dir("work"),
-				cmd.Stderr(stdBuffer),
-				cmd.Stdout(stdBuffer),
-			},
-		},
-	}
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			if gotO := MakeCmdOptions(tt.b); len(gotO) != len(tt.wantO) {
-				t.Errorf("MakeCmdOptions() = %d, want %d", len(gotO), len(tt.wantO))
-			}
-		})
-	}
-}
-
 func TestRunCommand(t *testing.T) {
 	originalWorkingDir := workingDir
 	originalExecutor := executor
@@ -427,7 +398,7 @@ func (tfm testFileMode) Sys() any {
 	return nil
 }
 
-func Test_isGoSourceFile(t *testing.T) {
+func Test_isRelevantFile(t *testing.T) {
 	tests := map[string]struct {
 		entry fs.FileInfo
 		want  bool
@@ -440,14 +411,14 @@ func Test_isGoSourceFile(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			if got := isGoSourceFile(tt.entry); got != tt.want {
-				t.Errorf("isGoSourceFile() = %v, want %v", got, tt.want)
+			if got := isRelevantFile(tt.entry, matchGoSource); got != tt.want {
+				t.Errorf("isRelevantFile() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func Test_includesGoSource(t *testing.T) {
+func Test_includesRelevantFiles(t *testing.T) {
 	originalFileSystem := fileSystem
 	defer func() {
 		fileSystem = originalFileSystem
@@ -467,8 +438,8 @@ func Test_includesGoSource(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			if got := includesGoSource(tt.dir); got != tt.want {
-				t.Errorf("includesGoSource() = %v, want %v", got, tt.want)
+			if got := includesRelevantFiles(tt.dir, matchGoSource); got != tt.want {
+				t.Errorf("includesRelevantFiles() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -498,7 +469,7 @@ func Test_sourceDirs(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			workingDir = tt.workDir
-			got, err := sourceDirs()
+			got, err := relevantDirs(matchGoSource)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("sourceDirs() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -978,39 +949,65 @@ func Test_eatTrailingEOL(t *testing.T) {
 func TestUpdateDependencies(t *testing.T) {
 	originalWorkingDir := workingDir
 	originalExecutor := executor
+	originalFileSystem := fileSystem
 	defer func() {
 		workingDir = originalWorkingDir
 		executor = originalExecutor
+		fileSystem = originalFileSystem
 	}()
-	// not used, and keeps WorkingDir() from getting exercised
-	workingDir = "work"
+	fileSystem = afero.NewMemMapFs()
+	fileSystem.MkdirAll(filepath.Join("work", "build"), 0o755)
+	fileSystem.Mkdir("empty", 0o755)
+	afero.WriteFile(fileSystem, "badDir", []byte("garbage"), 0o644)
+	afero.WriteFile(fileSystem, filepath.Join("work", "go.mod"), []byte("module github.com/majohn-r/tools-build"), 0o644)
+	afero.WriteFile(fileSystem, filepath.Join("work", "build", "go.mod"), []byte("module github.com/majohn-r/tools-build"), 0o644)
 	tests := map[string]struct {
+		workDir      string
 		getSucceeds  bool
 		tidySucceeds bool
 		wantCommands []string
 		want         bool
 	}{
+		"bad dir": {
+			workDir:      "badDir",
+			wantCommands: []string{},
+			want:         false,
+		},
+		"empty dir": {
+			workDir:      "empty",
+			wantCommands: []string{},
+			want:         true,
+		},
 		"go get fails": {
+			workDir:      "work",
 			getSucceeds:  false,
 			wantCommands: []string{"go get -u ./..."},
 			want:         false,
 		},
 		"go mod tidy fails": {
+			workDir:      "work",
 			getSucceeds:  true,
 			tidySucceeds: false,
 			wantCommands: []string{"go get -u ./...", "go mod tidy"},
 			want:         false,
 		},
 		"go mod tidy succeeds": {
+			workDir:      "work",
 			getSucceeds:  true,
 			tidySucceeds: true,
-			wantCommands: []string{"go get -u ./...", "go mod tidy"},
-			want:         true,
+			wantCommands: []string{
+				"go get -u ./...",
+				"go mod tidy",
+				"go get -u ./...",
+				"go mod tidy",
+			},
+			want: true,
 		},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			gotCommands := []string{}
+			workingDir = tt.workDir
 			executor = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
 				gotCommands = append(gotCommands, cmd)
 				if strings.HasPrefix(cmd, "go get") {

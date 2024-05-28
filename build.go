@@ -103,7 +103,7 @@ func GenerateCoverageReport(a *goyek.A, coverageDataFile string) bool {
 // GenerateDocumentation generates documentation of the code, outputting it to
 // stdout; returns false on error
 func GenerateDocumentation(a *goyek.A, excludedDirs []string) bool {
-	dirs, err := sourceDirs()
+	dirs, err := relevantDirs(matchGoSource)
 	if err != nil {
 		return false
 	}
@@ -117,13 +117,25 @@ func GenerateDocumentation(a *goyek.A, excludedDirs []string) bool {
 			}
 		}
 		if documentSources {
-			if !executor(a, fmt.Sprintf("go doc -all ./%s", dir), MakeCmdOptions(o)...) {
+			docCommand := directedCommand{
+				command: fmt.Sprintf("go doc -all ./%s", dir),
+				dir:     WorkingDir(),
+			}
+			if !docCommand.execute(a) {
 				return false
 			}
 		}
 	}
 	printBuffer(o)
 	return true
+}
+
+func matchModuleFile(name string) bool {
+	return name == "go.mod"
+}
+
+func matchGoSource(name string) bool {
+	return endsIn(name, ".go") && !endsIn(name, "_test.go") && !startsWith(name, "testing")
 }
 
 func printBuffer(b *bytes.Buffer) {
@@ -161,17 +173,6 @@ func Lint(a *goyek.A) bool {
 	return RunCommand(a, "gocritic check -enableAll ./...")
 }
 
-// MakeCmdOptions creates a slice of cmd.Option instances consisting of the
-// working directory, stderr (using the provided buffer), and stdout (using the
-// same provided buffer)
-func MakeCmdOptions(buffer *bytes.Buffer) []cmd.Option {
-	options := make([]cmd.Option, 3)
-	options[0] = cmd.Dir(WorkingDir())
-	options[1] = cmd.Stderr(buffer)
-	options[2] = cmd.Stdout(buffer)
-	return options
-}
-
 // NilAway runs the nilaway tool, which attempts, via static analysis, to detect
 // potential nil access errors; returns false on errors
 func NilAway(a *goyek.A) bool {
@@ -185,9 +186,8 @@ func NilAway(a *goyek.A) bool {
 // RunCommand runs a command and displays all of its output; returns true on
 // success
 func RunCommand(a *goyek.A, command string) bool {
-	outputBuffer := &bytes.Buffer{}
-	defer printBuffer(outputBuffer)
-	return executor(a, command, MakeCmdOptions(outputBuffer)...)
+	dc := directedCommand{command: command, dir: WorkingDir()}
+	return dc.execute(a)
 }
 
 // UnitTests runs all unit tests, with code coverage enabled; returns false on
@@ -197,15 +197,43 @@ func UnitTests(a *goyek.A) bool {
 	return RunCommand(a, "go test -cover ./...")
 }
 
+type directedCommand struct {
+	command string
+	dir     string
+}
+
 // UpdateDependencies updates module dependencies and prunes the modified go.mod
 // and go.sum files
 func UpdateDependencies(a *goyek.A) bool {
-	printLine("updating dependencies")
-	if !RunCommand(a, "go get -u ./...") {
+	dirs, err := relevantDirs(matchModuleFile)
+	if err != nil {
 		return false
 	}
-	printLine("pruning go.mod and go.sum")
-	return RunCommand(a, "go mod tidy")
+	getCommand := directedCommand{command: "go get -u ./..."}
+	tidyCommand := directedCommand{command: "go mod tidy"}
+	for _, dir := range dirs {
+		getCommand.dir = dir
+		tidyCommand.dir = dir
+		fmt.Printf("updating dependencies in folder %q", dir)
+		if !getCommand.execute(a) {
+			return false
+		}
+		printLine("pruning go.mod and go.sum")
+		if !tidyCommand.execute(a) {
+			return false
+		}
+	}
+	return true
+}
+
+func (dC directedCommand) execute(a *goyek.A) bool {
+	outputBuffer := &bytes.Buffer{}
+	defer printBuffer(outputBuffer)
+	options := make([]cmd.Option, 3)
+	options[0] = cmd.Dir(dC.dir)
+	options[1] = cmd.Stderr(outputBuffer)
+	options[2] = cmd.Stdout(outputBuffer)
+	return executor(a, dC.command, options...)
 }
 
 // VulnerabilityCheck runs the govulncheck tool, which checks for unresolved
@@ -284,7 +312,7 @@ func allDirs(top string) ([]string, error) {
 	return dirs, nil
 }
 
-func sourceDirs() ([]string, error) {
+func relevantDirs(fileMatcher func(string) bool) ([]string, error) {
 	topDir := WorkingDir()
 	dirs, err := allDirs(topDir)
 	if err != nil {
@@ -292,7 +320,7 @@ func sourceDirs() ([]string, error) {
 	}
 	sourceDirectories := []string{}
 	for _, dir := range dirs {
-		if includesGoSource(dir) {
+		if includesRelevantFiles(dir, fileMatcher) {
 			sourceDir := strings.TrimPrefix(strings.TrimPrefix(dir, topDir), "/")
 			sourceDirectories = append(sourceDirectories, sourceDir)
 		}
@@ -300,25 +328,25 @@ func sourceDirs() ([]string, error) {
 	return sourceDirectories, nil
 }
 
-func includesGoSource(dir string) bool {
+func includesRelevantFiles(dir string, fileMatcher func(string) bool) bool {
 	entries, err := afero.ReadDir(fileSystem, dir)
 	if err != nil {
 		return false
 	}
 	for _, e := range entries {
-		if isGoSourceFile(e) {
+		if isRelevantFile(e, fileMatcher) {
 			return true
 		}
 	}
 	return false
 }
 
-func isGoSourceFile(entry fs.FileInfo) bool {
+func isRelevantFile(entry fs.FileInfo, fileMatcher func(string) bool) bool {
 	if !entry.Mode().IsRegular() {
 		return false
 	}
 	name := entry.Name()
-	return endsIn(name, ".go") && !endsIn(name, "_test.go") && !startsWith(name, "testing")
+	return fileMatcher(name)
 }
 
 // Silly functions? They make the usage clearer
