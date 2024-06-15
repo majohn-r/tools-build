@@ -2,6 +2,7 @@ package tools_build
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"io/fs"
 	"os"
@@ -17,9 +18,10 @@ var (
 	fileSystem = afero.NewOsFs()
 	workingDir = ""
 	// function vars make it easy for tests to stub out functionality
-	exit      = os.Exit
-	executor  = cmd.Exec
-	printLine = fmt.Println
+	exit       = os.Exit
+	executor   = cmd.Exec
+	printLine  = fmt.Println
+	aggressive = flag.Bool("aggressive", false, "set to make dependency updates more aggressive")
 )
 
 // Clean deletes the named files, which must be located in, or in a subdirectory
@@ -197,9 +199,16 @@ func UnitTests(a *goyek.A) bool {
 	return RunCommand(a, "go test -cover ./...")
 }
 
+type envVar struct {
+	name  string
+	value string
+	unset bool
+}
+
 type directedCommand struct {
 	command string
 	dir     string
+	envVars []envVar
 }
 
 // UpdateDependencies updates module dependencies and prunes the modified go.mod
@@ -214,6 +223,13 @@ func UpdateDependencies(a *goyek.A) bool {
 	for _, dir := range dirs {
 		path := filepath.Join(WorkingDir(), dir)
 		getCommand.dir = path
+		if *aggressive {
+			getCommand.envVars = append(getCommand.envVars, envVar{
+				name:  "GOPROXY",
+				value: "direct",
+				unset: false,
+			})
+		}
 		tidyCommand.dir = path
 		fmt.Printf("%q: updating dependencies\n", path)
 		if !getCommand.execute(a) {
@@ -234,7 +250,35 @@ func (dC directedCommand) execute(a *goyek.A) bool {
 	options[0] = cmd.Dir(dC.dir)
 	options[1] = cmd.Stderr(outputBuffer)
 	options[2] = cmd.Stdout(outputBuffer)
+	savedEnvVars := setupEnvVars(dC.envVars)
+	defer func() {
+		for _, v := range savedEnvVars {
+			if v.unset {
+				os.Unsetenv(v.name)
+			} else {
+				os.Setenv(v.name, v.value)
+			}
+		}
+	}()
 	return executor(a, dC.command, options...)
+}
+
+func setupEnvVars(input []envVar) []envVar {
+	savedEnvVars := []envVar{}
+	for _, envVariable := range input {
+		oldValue, defined := os.LookupEnv(envVariable.name)
+		savedEnvVars = append(savedEnvVars, envVar{
+			name:  envVariable.name,
+			value: oldValue,
+			unset: !defined,
+		})
+		if envVariable.unset {
+			os.Unsetenv(envVariable.name)
+		} else {
+			os.Setenv(envVariable.name, envVariable.value)
+		}
+	}
+	return savedEnvVars
 }
 
 // VulnerabilityCheck runs the govulncheck tool, which checks for unresolved

@@ -950,10 +950,12 @@ func TestUpdateDependencies(t *testing.T) {
 	originalWorkingDir := workingDir
 	originalExecutor := executor
 	originalFileSystem := fileSystem
+	originalAggressive := aggressive
 	defer func() {
 		workingDir = originalWorkingDir
 		executor = originalExecutor
 		fileSystem = originalFileSystem
+		aggressive = originalAggressive
 	}()
 	fileSystem = afero.NewMemMapFs()
 	fileSystem.MkdirAll(filepath.Join("work", "build"), 0o755)
@@ -962,11 +964,12 @@ func TestUpdateDependencies(t *testing.T) {
 	afero.WriteFile(fileSystem, filepath.Join("work", "go.mod"), []byte("module github.com/majohn-r/tools-build"), 0o644)
 	afero.WriteFile(fileSystem, filepath.Join("work", "build", "go.mod"), []byte("module github.com/majohn-r/tools-build"), 0o644)
 	tests := map[string]struct {
-		workDir      string
-		getSucceeds  bool
-		tidySucceeds bool
-		wantCommands []string
-		want         bool
+		workDir              string
+		getCommandAggressive bool
+		getSucceeds          bool
+		tidySucceeds         bool
+		wantCommands         []string
+		want                 bool
 	}{
 		"bad dir": {
 			workDir:      "badDir",
@@ -992,9 +995,10 @@ func TestUpdateDependencies(t *testing.T) {
 			want:         false,
 		},
 		"go mod tidy succeeds": {
-			workDir:      "work",
-			getSucceeds:  true,
-			tidySucceeds: true,
+			workDir:              "work",
+			getCommandAggressive: true,
+			getSucceeds:          true,
+			tidySucceeds:         true,
 			wantCommands: []string{
 				"go get -u ./...",
 				"go mod tidy",
@@ -1019,11 +1023,78 @@ func TestUpdateDependencies(t *testing.T) {
 				t.Errorf("UpdateDependencies() sent unexpected command: %q", cmd)
 				return false
 			}
+			a := tt.getCommandAggressive
+			aggressive = &a
 			if got := UpdateDependencies(nil); got != tt.want {
 				t.Errorf("UpdateDependencies() = %v, want %v", got, tt.want)
 			}
 			if !reflect.DeepEqual(gotCommands, tt.wantCommands) {
 				t.Errorf("UpdateDependencies() commands = %v, want %v", gotCommands, tt.wantCommands)
+			}
+		})
+	}
+}
+
+func Test_setupEnvVars(t *testing.T) {
+	var1 := "VAR1"
+	var2 := "VAR2"
+	vars := []string{var1, var2}
+	originalVars := make([]envVar, 2)
+	for k, s := range vars {
+		val, defined := os.LookupEnv(s)
+		originalVars[k] = envVar{
+			name:  s,
+			value: val,
+			unset: !defined,
+		}
+	}
+	defer func() {
+		for _, ev := range originalVars {
+			if ev.unset {
+				os.Unsetenv(ev.name)
+			} else {
+				os.Setenv(ev.name, ev.value)
+			}
+		}
+	}()
+	val := "foo"
+	os.Setenv(var1, val)
+	os.Unsetenv(var2)
+	tests := map[string]struct {
+		input []envVar
+		want  []envVar
+	}{
+		"thorough": {
+			input: []envVar{
+				{
+					name:  var1,
+					value: "",
+					unset: true,
+				},
+				{
+					name:  var2,
+					value: "foo",
+					unset: false,
+				},
+			},
+			want: []envVar{
+				{
+					name:  var1,
+					value: val,
+					unset: false,
+				},
+				{
+					name:  var2,
+					value: "",
+					unset: true,
+				},
+			},
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := setupEnvVars(tt.input); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("setupEnvVars() = %v, want %v", got, tt.want)
 			}
 		})
 	}
