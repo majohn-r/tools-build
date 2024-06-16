@@ -261,13 +261,20 @@ func (dC directedCommand) execute(a *goyek.A) bool {
 	return state
 }
 
+func printRestoration(v envVar) {
+	if v.unset {
+		printLine("restoring (unsetting):", v.name)
+	} else {
+		printLine("restoring (resetting):", v.name, "<-", v.value)
+	}
+}
+
 func restoreEnvVars(saved []envVar) {
 	for _, v := range saved {
+		printRestoration(v)
 		if v.unset {
-			printLine("restoring", v.name, "(unsetting)")
 			unsetenv(v.name)
 		} else {
-			printLine("restoring", v.name, "(resetting to", v.value+")")
 			setenv(v.name, v.value)
 		}
 	}
@@ -288,6 +295,14 @@ func checkEnvVars(input []envVar) bool {
 	return true
 }
 
+func printFormerEnvVarState(name, value string, defined bool) {
+	if defined {
+		printLine(name, "was set to", value)
+	} else {
+		printLine(name, "was not set")
+	}
+}
+
 func setupEnvVars(input []envVar) ([]envVar, bool) {
 	if !checkEnvVars(input) {
 		return nil, false
@@ -295,7 +310,7 @@ func setupEnvVars(input []envVar) ([]envVar, bool) {
 	savedEnvVars := []envVar{}
 	for _, envVariable := range input {
 		oldValue, defined := os.LookupEnv(envVariable.name)
-		printLine(envVariable.name, "was set to", oldValue, "defined?", defined)
+		printFormerEnvVarState(envVariable.name, oldValue, defined)
 		savedEnvVars = append(savedEnvVars, envVar{
 			name:  envVariable.name,
 			value: oldValue,
