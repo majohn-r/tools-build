@@ -254,8 +254,10 @@ func (dC directedCommand) execute(a *goyek.A) bool {
 	defer func() {
 		for _, v := range savedEnvVars {
 			if v.unset {
+				printLine("unsetting", v.name)
 				os.Unsetenv(v.name)
 			} else {
+				printLine("resetting", v.name, "to", v.value)
 				os.Setenv(v.name, v.value)
 			}
 		}
@@ -267,14 +269,17 @@ func setupEnvVars(input []envVar) []envVar {
 	savedEnvVars := []envVar{}
 	for _, envVariable := range input {
 		oldValue, defined := os.LookupEnv(envVariable.name)
+		printLine(envVariable.name, "was set to", oldValue, "defined?", defined)
 		savedEnvVars = append(savedEnvVars, envVar{
 			name:  envVariable.name,
 			value: oldValue,
 			unset: !defined,
 		})
 		if envVariable.unset {
+			printLine("unsetting", envVariable.name)
 			os.Unsetenv(envVariable.name)
 		} else {
+			printLine("setting", envVariable.name, "to", envVariable.value)
 			os.Setenv(envVariable.name, envVariable.value)
 		}
 	}
