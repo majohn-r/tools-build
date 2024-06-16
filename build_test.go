@@ -1038,8 +1038,9 @@ func TestUpdateDependencies(t *testing.T) {
 func Test_setupEnvVars(t *testing.T) {
 	var1 := "VAR1"
 	var2 := "VAR2"
-	vars := []string{var1, var2}
-	originalVars := make([]envVar, 2)
+	var3 := "VAR3"
+	vars := []string{var1, var2, var3}
+	originalVars := make([]envVar, 3)
 	for k, s := range vars {
 		val, defined := os.LookupEnv(s)
 		originalVars[k] = envVar{
@@ -1061,9 +1062,26 @@ func Test_setupEnvVars(t *testing.T) {
 	os.Setenv(var1, val)
 	os.Unsetenv(var2)
 	tests := map[string]struct {
-		input []envVar
-		want  []envVar
+		input  []envVar
+		want   []envVar
+		wantOk bool
 	}{
+		"error case": {
+			input: []envVar{
+				{
+					name:  var3,
+					value: "foo",
+					unset: false,
+				},
+				{
+					name:  var3,
+					value: "bar",
+					unset: false,
+				},
+			},
+			want:   nil,
+			wantOk: false,
+		},
 		"thorough": {
 			input: []envVar{
 				{
@@ -1089,12 +1107,91 @@ func Test_setupEnvVars(t *testing.T) {
 					unset: true,
 				},
 			},
+			wantOk: true,
 		},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			if got := setupEnvVars(tt.input); !reflect.DeepEqual(got, tt.want) {
+			got, gotOk := setupEnvVars(tt.input)
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("setupEnvVars() = %v, want %v", got, tt.want)
+			}
+			if gotOk != tt.wantOk {
+				t.Errorf("setupEnvVars() = %t, want %t", gotOk, tt.wantOk)
+			}
+		})
+	}
+}
+
+func Test_restoreEnvVars(t *testing.T) {
+	originalSetenv := setenv
+	originalUnsetenv := unsetenv
+	defer func() {
+		setenv = originalSetenv
+		unsetenv = originalUnsetenv
+	}()
+	var sets int
+	var unsets int
+	setenv = func(_, _ string) error {
+		sets++
+		return nil
+	}
+	unsetenv = func(_ string) error {
+		unsets++
+		return nil
+	}
+	tests := map[string]struct {
+		saved     []envVar
+		wantSet   int
+		wantUnset int
+	}{
+		"mix": {
+			saved: []envVar{
+				{
+					name:  "v1",
+					value: "val1",
+					unset: false,
+				},
+				{
+					name:  "v2",
+					value: "",
+					unset: true,
+				},
+				{
+					name:  "v3",
+					value: "val3",
+					unset: false,
+				},
+				{
+					name:  "v4",
+					value: "",
+					unset: true,
+				},
+				{
+					name:  "v5",
+					value: "",
+					unset: true,
+				},
+			},
+			wantSet:   2,
+			wantUnset: 3,
+		},
+		"empty": {
+			saved:     nil,
+			wantSet:   0,
+			wantUnset: 0,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			sets = 0
+			unsets = 0
+			restoreEnvVars(tt.saved)
+			if sets != tt.wantSet {
+				t.Errorf("restoreEnvVars set %d, want %d", sets, tt.wantSet)
+			}
+			if unsets != tt.wantUnset {
+				t.Errorf("restoreEnvVars unset %d, want %d", unsets, tt.wantUnset)
 			}
 		})
 	}

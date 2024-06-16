@@ -17,11 +17,13 @@ import (
 var (
 	fileSystem = afero.NewOsFs()
 	workingDir = ""
-	// function vars make it easy for tests to stub out functionality
-	exit       = os.Exit
-	executor   = cmd.Exec
-	printLine  = fmt.Println
 	aggressive = flag.Bool("aggressive", false, "set to make dependency updates more aggressive")
+	// function vars make it easy for tests to stub out functionality
+	executor  = cmd.Exec
+	exit      = os.Exit
+	printLine = fmt.Println
+	setenv    = os.Setenv
+	unsetenv  = os.Unsetenv
 )
 
 // Clean deletes the named files, which must be located in, or in a subdirectory
@@ -219,17 +221,17 @@ func UpdateDependencies(a *goyek.A) bool {
 		return false
 	}
 	getCommand := directedCommand{command: "go get -u ./..."}
+	if *aggressive {
+		getCommand.envVars = append(getCommand.envVars, envVar{
+			name:  "GOPROXY",
+			value: "direct",
+			unset: false,
+		})
+	}
 	tidyCommand := directedCommand{command: "go mod tidy"}
 	for _, dir := range dirs {
 		path := filepath.Join(WorkingDir(), dir)
 		getCommand.dir = path
-		if *aggressive {
-			getCommand.envVars = append(getCommand.envVars, envVar{
-				name:  "GOPROXY",
-				value: "direct",
-				unset: false,
-			})
-		}
 		tidyCommand.dir = path
 		fmt.Printf("%q: updating dependencies\n", path)
 		if !getCommand.execute(a) {
@@ -250,22 +252,46 @@ func (dC directedCommand) execute(a *goyek.A) bool {
 	options[0] = cmd.Dir(dC.dir)
 	options[1] = cmd.Stderr(outputBuffer)
 	options[2] = cmd.Stdout(outputBuffer)
-	savedEnvVars := setupEnvVars(dC.envVars)
-	defer func() {
-		for _, v := range savedEnvVars {
-			if v.unset {
-				printLine("unsetting", v.name)
-				os.Unsetenv(v.name)
-			} else {
-				printLine("resetting", v.name, "to", v.value)
-				os.Setenv(v.name, v.value)
-			}
-		}
-	}()
-	return executor(a, dC.command, options...)
+	savedEnvVars, envVarsOK := setupEnvVars(dC.envVars)
+	state := envVarsOK
+	if state {
+		defer restoreEnvVars(savedEnvVars)
+		state = executor(a, dC.command, options...)
+	}
+	return state
 }
 
-func setupEnvVars(input []envVar) []envVar {
+func restoreEnvVars(saved []envVar) {
+	for _, v := range saved {
+		if v.unset {
+			printLine("restoring", v.name, "(unsetting)")
+			unsetenv(v.name)
+		} else {
+			printLine("restoring", v.name, "(resetting to", v.value+")")
+			setenv(v.name, v.value)
+		}
+	}
+}
+
+func checkEnvVars(input []envVar) bool {
+	if len(input) == 0 {
+		return true
+	}
+	distinctVar := map[string]bool{}
+	for _, v := range input {
+		if distinctVar[v.name] {
+			printLine("code error: detected attempt to set environment variable", v.name, "twice")
+			return false
+		}
+		distinctVar[v.name] = true
+	}
+	return true
+}
+
+func setupEnvVars(input []envVar) ([]envVar, bool) {
+	if !checkEnvVars(input) {
+		return nil, false
+	}
 	savedEnvVars := []envVar{}
 	for _, envVariable := range input {
 		oldValue, defined := os.LookupEnv(envVariable.name)
@@ -277,13 +303,13 @@ func setupEnvVars(input []envVar) []envVar {
 		})
 		if envVariable.unset {
 			printLine("unsetting", envVariable.name)
-			os.Unsetenv(envVariable.name)
+			unsetenv(envVariable.name)
 		} else {
 			printLine("setting", envVariable.name, "to", envVariable.value)
-			os.Setenv(envVariable.name, envVariable.value)
+			setenv(envVariable.name, envVariable.value)
 		}
 	}
-	return savedEnvVars
+	return savedEnvVars, true
 }
 
 // VulnerabilityCheck runs the govulncheck tool, which checks for unresolved
