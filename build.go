@@ -34,13 +34,13 @@ func Clean(files []string) {
 	workingFS := os.DirFS(WorkingDir())
 	for _, file := range files {
 		if isIllegalFileName(file) {
-			fmt.Fprintf(os.Stderr, "file %q will not be removed, exiting the build\n", file)
+			_, _ = fmt.Fprintf(os.Stderr, "file %q will not be removed, exiting the build\n", file)
 			exit(1)
 		}
 		openFile, err := workingFS.Open(file)
 		if err == nil {
-			openFile.Close()
-			fileSystem.Remove(filepath.Join(WorkingDir(), file))
+			_ = openFile.Close()
+			_ = fileSystem.Remove(filepath.Join(WorkingDir(), file))
 		}
 	}
 }
@@ -77,13 +77,13 @@ func canonicalizePath(path string) string {
 // Format runs the gofmt tool to repair the formatting of each source file;
 // returns false if the command fails
 func Format(a *goyek.A) bool {
-	printLine("cleaning up source code formatting")
+	_, _ = printLine("cleaning up source code formatting")
 	return RunCommand(a, "gofmt -e -l -s -w .")
 }
 
 // Generate runs the 'go generate' tool
 func Generate(a *goyek.A) bool {
-	printLine("running go generate")
+	_, _ = printLine("running go generate")
 	return RunCommand(a, "go generate -x ./...")
 }
 
@@ -115,7 +115,7 @@ func GenerateDocumentation(a *goyek.A, excludedDirs []string) bool {
 	for _, dir := range dirs {
 		documentSources := true
 		for _, dirToExclude := range excludedDirs {
-			if dir == dirToExclude {
+			if isParentDir(dir, dirToExclude) {
 				documentSources = false
 				break
 			}
@@ -134,6 +134,20 @@ func GenerateDocumentation(a *goyek.A, excludedDirs []string) bool {
 	return true
 }
 
+func isParentDir(targetDir, possibleParent string) bool {
+	if !strings.HasPrefix(targetDir, possibleParent) {
+		return false
+	}
+	if targetDir == possibleParent {
+		return true
+	}
+	if strings.HasSuffix(possibleParent, "/") {
+		return true
+	}
+	remainder := strings.TrimPrefix(targetDir, possibleParent)
+	return strings.HasPrefix(remainder, "/")
+}
+
 func matchModuleFile(name string) bool {
 	return name == "go.mod"
 }
@@ -145,7 +159,7 @@ func matchGoSource(name string) bool {
 func printBuffer(b *bytes.Buffer) {
 	s := eatTrailingEOL(b.String())
 	if s != "" {
-		printLine(s)
+		_, _ = printLine(s)
 	}
 }
 
@@ -167,13 +181,13 @@ func Install(a *goyek.A, packageName string) bool {
 	return RunCommand(a, fmt.Sprintf("go install -v %s@latest", packageName))
 }
 
-// Lint runs lint on the source code after making sure that the lint tool is up
-// to date; returns false on failure
+// Lint runs lint on the source code after making sure that the lint tool is up-to-date;
+// returns false on failure
 func Lint(a *goyek.A) bool {
 	if !Install(a, "github.com/go-critic/go-critic/cmd/gocritic") {
 		return false
 	}
-	printLine("linting source code")
+	_, _ = printLine("linting source code")
 	return RunCommand(a, "gocritic check -enableAll ./...")
 }
 
@@ -183,7 +197,7 @@ func NilAway(a *goyek.A) bool {
 	if !Install(a, "go.uber.org/nilaway/cmd/nilaway") {
 		return false
 	}
-	printLine("running nilaway analysis")
+	_, _ = printLine("running nilaway analysis")
 	return RunCommand(a, "nilaway ./...")
 }
 
@@ -197,7 +211,7 @@ func RunCommand(a *goyek.A, command string) bool {
 // UnitTests runs all unit tests, with code coverage enabled; returns false on
 // failure
 func UnitTests(a *goyek.A) bool {
-	printLine("running all unit tests")
+	_, _ = printLine("running all unit tests")
 	return RunCommand(a, "go test -cover ./...")
 }
 
@@ -263,9 +277,9 @@ func (dC directedCommand) execute(a *goyek.A) bool {
 
 func printRestoration(v envVar) {
 	if v.unset {
-		printLine("restoring (unsetting):", v.name)
+		_, _ = printLine("restoring (unsetting):", v.name)
 	} else {
-		printLine("restoring (resetting):", v.name, "<-", v.value)
+		_, _ = printLine("restoring (resetting):", v.name, "<-", v.value)
 	}
 }
 
@@ -273,9 +287,9 @@ func restoreEnvVars(saved []envVar) {
 	for _, v := range saved {
 		printRestoration(v)
 		if v.unset {
-			unsetenv(v.name)
+			_ = unsetenv(v.name)
 		} else {
-			setenv(v.name, v.value)
+			_ = setenv(v.name, v.value)
 		}
 	}
 }
@@ -287,7 +301,7 @@ func checkEnvVars(input []envVar) bool {
 	distinctVar := map[string]bool{}
 	for _, v := range input {
 		if distinctVar[v.name] {
-			printLine("code error: detected attempt to set environment variable", v.name, "twice")
+			_, _ = printLine("code error: detected attempt to set environment variable", v.name, "twice")
 			return false
 		}
 		distinctVar[v.name] = true
@@ -297,9 +311,9 @@ func checkEnvVars(input []envVar) bool {
 
 func printFormerEnvVarState(name, value string, defined bool) {
 	if defined {
-		printLine(name, "was set to", value)
+		_, _ = printLine(name, "was set to", value)
 	} else {
-		printLine(name, "was not set")
+		_, _ = printLine(name, "was not set")
 	}
 }
 
@@ -307,7 +321,7 @@ func setupEnvVars(input []envVar) ([]envVar, bool) {
 	if !checkEnvVars(input) {
 		return nil, false
 	}
-	savedEnvVars := []envVar{}
+	savedEnvVars := make([]envVar, 0)
 	for _, envVariable := range input {
 		oldValue, defined := os.LookupEnv(envVariable.name)
 		printFormerEnvVarState(envVariable.name, oldValue, defined)
@@ -317,11 +331,11 @@ func setupEnvVars(input []envVar) ([]envVar, bool) {
 			unset: !defined,
 		})
 		if envVariable.unset {
-			printLine("unsetting", envVariable.name)
-			unsetenv(envVariable.name)
+			_, _ = printLine("unsetting", envVariable.name)
+			_ = unsetenv(envVariable.name)
 		} else {
-			printLine("setting", envVariable.name, "to", envVariable.value)
-			setenv(envVariable.name, envVariable.value)
+			_, _ = printLine("setting", envVariable.name, "to", envVariable.value)
+			_ = setenv(envVariable.name, envVariable.value)
 		}
 	}
 	return savedEnvVars, true
@@ -333,11 +347,11 @@ func VulnerabilityCheck(a *goyek.A) bool {
 	if !Install(a, "golang.org/x/vuln/cmd/govulncheck") {
 		return false
 	}
-	printLine("running vulnerability checks")
+	_, _ = printLine("running vulnerability checks")
 	return RunCommand(a, "govulncheck -show verbose ./...")
 }
 
-// WorkingDir returns a best guess of the working directory. If the directory
+// WorkingDir returns a 'best' guess of the working directory. If the directory
 // found is not, in fact, a directory, or is, but does not contain a .git
 // subdirectory, calls exit. A successful call's value is cached.
 func WorkingDir() string {
@@ -357,7 +371,7 @@ func WorkingDir() string {
 
 func isUnacceptableWorkingDir(candidate string) bool {
 	if candidate == "" {
-		fmt.Fprintln(os.Stderr, "code error: empty candidate value passed to isAcceptableWorkingDir")
+		_, _ = fmt.Fprintln(os.Stderr, "code error: empty candidate value passed to isAcceptableWorkingDir")
 		return true
 	}
 	if isInvalidDir(candidate) {
@@ -409,7 +423,7 @@ func relevantDirs(fileMatcher func(string) bool) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	sourceDirectories := []string{}
+	sourceDirectories := make([]string, 0)
 	for _, dir := range dirs {
 		if includesRelevantFiles(dir, fileMatcher) {
 			sourceDir := strings.TrimPrefix(strings.TrimPrefix(dir, topDir), "/")
