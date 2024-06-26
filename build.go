@@ -95,7 +95,12 @@ func FormatSelective(a *goyek.A, exclusions []string) bool {
 	for _, src := range srcDirs {
 		switch src {
 		case "":
-			command = append(command, "*.go")
+			entries, _ := afero.ReadDir(fileSystem, WorkingDir())
+			for _, entry := range entries {
+				if !entry.IsDir() && matchAnyGoFile(entry.Name()) {
+					command = append(command, entry.Name())
+				}
+			}
 		default:
 			formatSrc := true
 			for _, dirToExclude := range exclusions {
@@ -105,7 +110,7 @@ func FormatSelective(a *goyek.A, exclusions []string) bool {
 				}
 			}
 			if formatSrc {
-				command = append(command, fmt.Sprintf("%s/*.go", src))
+				command = append(command, src)
 			}
 		}
 	}

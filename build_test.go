@@ -1278,7 +1278,9 @@ func TestFormatSelective(t *testing.T) {
 	}()
 	fileSystem = afero.NewMemMapFs()
 	_ = fileSystem.MkdirAll("work/x/y/z", dirMode)
+	_ = fileSystem.MkdirAll("work/go", dirMode)
 	_ = afero.WriteFile(fileSystem, "work/foo.go", []byte("foo"), fileMode)
+	_ = afero.WriteFile(fileSystem, "work/foo_test.go", []byte("foo"), fileMode)
 	_ = afero.WriteFile(fileSystem, "work/x/a.go", []byte("a"), fileMode)
 	_ = afero.WriteFile(fileSystem, "work/x/y/b_test.go", []byte("b_test"), fileMode)
 	_ = afero.WriteFile(fileSystem, "work/x/y/z/c.go", []byte("c"), fileMode)
@@ -1320,14 +1322,14 @@ func TestFormatSelective(t *testing.T) {
 			args:                args{exclusions: []string{".idea"}},
 			workingDir:          "work",
 			wantExecutorSuccess: true,
-			wantCommand:         "gofmt -e -l -s -w *.go x/*.go x/y/*.go x/y/z/*.go",
+			wantCommand:         "gofmt -e -l -s -w foo.go foo_test.go x x/y x/y/z",
 			want:                true,
 		},
 		"exclusions fails": {
 			args:                args{exclusions: []string{".idea"}},
 			workingDir:          "work",
 			wantExecutorSuccess: false,
-			wantCommand:         "gofmt -e -l -s -w *.go x/*.go x/y/*.go x/y/z/*.go",
+			wantCommand:         "gofmt -e -l -s -w foo.go foo_test.go x x/y x/y/z",
 			want:                false,
 		},
 	}

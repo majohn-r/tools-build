@@ -1,6 +1,9 @@
 <component name="InspectionProjectProfileManager">
   <profile version="1.0">
     <option name="myName" value="Project Default" />
+    <inspection_tool class="Annotator" enabled="true" level="ERROR" enabled_by_default="true">
+      <option name="runAnnotators" value="false" />
+    </inspection_tool>
     <inspection_tool class="GoUnhandledErrorResult" enabled="true" level="WARNING" enabled_by_default="true">
       <functions>
         <function importPath="errors" name="Join" />
@@ -14,5 +17,6 @@
         <function importPath="fmt" name="Fprintf" />
       </functions>
     </inspection_tool>
+    <inspection_tool class="GrazieInspection" enabled="false" level="GRAMMAR_ERROR" enabled_by_default="false" />
   </profile>
 </component>

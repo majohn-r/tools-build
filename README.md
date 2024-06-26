@@ -9,7 +9,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/majohn-r/tools-build)](https://goreportcard.com/report/github.com/majohn-r/tools-build)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/majohn-r/tools-build/build.yml?branch=main)](https://github.com/majohn-r/tools-build/actions?query=workflow%3Abuild+branch%3Amain)
 
-This package provides build script tooling for go-based projects. The tooling is
+This package provides build script tooling for Go-based projects. The tooling is
 in the form of code utilizing [goyek build
 automation](https://pkg.go.dev/github.com/goyek/goyek/v2). goyek builds are
 typically set up as tasks, and this project provides some common code to perform
@@ -138,7 +138,7 @@ level directory. If **DIR** is not set as an environment variable,
 **WorkingDir** will assume that "**..**" is the correct location, which is based
 on the assumption that the go code running the build is placed in a directory,
 one level deep, such as **build** (as seen in the line above ```cd
-"${DIR}/build```). Regardless of whether or not the **DIR** environment variable
+"${DIR}/build```). Regardless of whether the **DIR** environment variable
 is set, the **WorkingDir** function looks for the **.git** directory in its
 candidate value, and it's not found, then the **WorkingDir** function calls
 **os.Exit** and the build ends.
