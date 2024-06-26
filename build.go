@@ -77,13 +77,44 @@ func canonicalizePath(path string) string {
 // Format runs the gofmt tool to repair the formatting of each source file;
 // returns false if the command fails
 func Format(a *goyek.A) bool {
-	_, _ = printLine("cleaning up source code formatting")
+	printIt("cleaning up source code formatting")
 	return RunCommand(a, "gofmt -e -l -s -w .")
+}
+
+// FormatSelective runs the gofmt tool to repair the formatting of selected source files; returns false if the command fails
+func FormatSelective(a *goyek.A, exclusions []string) bool {
+	if len(exclusions) == 0 {
+		return Format(a)
+	}
+	printIt("cleaning up source code formatting, excluding folders", exclusions)
+	srcDirs, err := relevantDirs(matchAnyGoFile)
+	if err != nil {
+		return false
+	}
+	command := []string{"gofmt -e -l -s -w"}
+	for _, src := range srcDirs {
+		switch src {
+		case "":
+			command = append(command, "*.go")
+		default:
+			formatSrc := true
+			for _, dirToExclude := range exclusions {
+				if isParentDir(src, dirToExclude) {
+					formatSrc = false
+					break
+				}
+			}
+			if formatSrc {
+				command = append(command, fmt.Sprintf("%s/*.go", src))
+			}
+		}
+	}
+	return RunCommand(a, strings.Join(command, " "))
 }
 
 // Generate runs the 'go generate' tool
 func Generate(a *goyek.A) bool {
-	_, _ = printLine("running go generate")
+	printIt("running go generate")
 	return RunCommand(a, "go generate -x ./...")
 }
 
@@ -156,10 +187,14 @@ func matchGoSource(name string) bool {
 	return endsIn(name, ".go") && !endsIn(name, "_test.go") && !startsWith(name, "testing")
 }
 
+func matchAnyGoFile(name string) bool {
+	return endsIn(name, ".go")
+}
+
 func printBuffer(b *bytes.Buffer) {
 	s := eatTrailingEOL(b.String())
 	if s != "" {
-		_, _ = printLine(s)
+		printIt(s)
 	}
 }
 
@@ -177,7 +212,7 @@ func eatTrailingEOL(s string) string {
 // Install runs the command to install the '@latest' version of a specified
 // package; returns false on failure
 func Install(a *goyek.A, packageName string) bool {
-	fmt.Printf("installing the latest version of %s\n", packageName)
+	printIt("installing the latest version of", packageName)
 	return RunCommand(a, fmt.Sprintf("go install -v %s@latest", packageName))
 }
 
@@ -187,7 +222,7 @@ func Lint(a *goyek.A) bool {
 	if !Install(a, "github.com/go-critic/go-critic/cmd/gocritic") {
 		return false
 	}
-	_, _ = printLine("linting source code")
+	printIt("linting source code")
 	return RunCommand(a, "gocritic check -enableAll ./...")
 }
 
@@ -197,7 +232,7 @@ func NilAway(a *goyek.A) bool {
 	if !Install(a, "go.uber.org/nilaway/cmd/nilaway") {
 		return false
 	}
-	_, _ = printLine("running nilaway analysis")
+	printIt("running nilaway analysis")
 	return RunCommand(a, "nilaway ./...")
 }
 
@@ -211,7 +246,7 @@ func RunCommand(a *goyek.A, command string) bool {
 // UnitTests runs all unit tests, with code coverage enabled; returns false on
 // failure
 func UnitTests(a *goyek.A) bool {
-	_, _ = printLine("running all unit tests")
+	printIt("running all unit tests")
 	return RunCommand(a, "go test -cover ./...")
 }
 
@@ -277,9 +312,9 @@ func (dC directedCommand) execute(a *goyek.A) bool {
 
 func printRestoration(v envVar) {
 	if v.unset {
-		_, _ = printLine("restoring (unsetting):", v.name)
+		printIt("restoring (unsetting):", v.name)
 	} else {
-		_, _ = printLine("restoring (resetting):", v.name, "<-", v.value)
+		printIt("restoring (resetting):", v.name, "<-", v.value)
 	}
 }
 
@@ -301,7 +336,7 @@ func checkEnvVars(input []envVar) bool {
 	distinctVar := map[string]bool{}
 	for _, v := range input {
 		if distinctVar[v.name] {
-			_, _ = printLine("code error: detected attempt to set environment variable", v.name, "twice")
+			printIt("code error: detected attempt to set environment variable", v.name, "twice")
 			return false
 		}
 		distinctVar[v.name] = true
@@ -311,9 +346,9 @@ func checkEnvVars(input []envVar) bool {
 
 func printFormerEnvVarState(name, value string, defined bool) {
 	if defined {
-		_, _ = printLine(name, "was set to", value)
+		printIt(name, "was set to", value)
 	} else {
-		_, _ = printLine(name, "was not set")
+		printIt(name, "was not set")
 	}
 }
 
@@ -331,10 +366,10 @@ func setupEnvVars(input []envVar) ([]envVar, bool) {
 			unset: !defined,
 		})
 		if envVariable.unset {
-			_, _ = printLine("unsetting", envVariable.name)
+			printIt("unsetting", envVariable.name)
 			_ = unsetenv(envVariable.name)
 		} else {
-			_, _ = printLine("setting", envVariable.name, "to", envVariable.value)
+			printIt("setting", envVariable.name, "to", envVariable.value)
 			_ = setenv(envVariable.name, envVariable.value)
 		}
 	}
@@ -347,7 +382,7 @@ func VulnerabilityCheck(a *goyek.A) bool {
 	if !Install(a, "golang.org/x/vuln/cmd/govulncheck") {
 		return false
 	}
-	_, _ = printLine("running vulnerability checks")
+	printIt("running vulnerability checks")
 	return RunCommand(a, "govulncheck -show verbose ./...")
 }
 
@@ -462,4 +497,8 @@ func startsWith(s, prefix string) bool {
 
 func endsIn(s, suffix string) bool {
 	return strings.HasSuffix(s, suffix)
+}
+
+func printIt(a ...any) {
+	_, _ = printLine(a...)
 }

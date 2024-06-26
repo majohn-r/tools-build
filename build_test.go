@@ -15,6 +15,11 @@ import (
 	"github.com/spf13/afero"
 )
 
+const (
+	dirMode  = 0o755
+	fileMode = 0o644
+)
+
 func TestClean(t *testing.T) {
 	// note: cannot use memory mapped filesystem; Clean relies on using the os
 	// filesystem to make sure all files are within the working directory
@@ -26,9 +31,9 @@ func TestClean(t *testing.T) {
 		exit = originalExit
 		_ = fileSystem.RemoveAll("a")
 	}()
-	_ = fileSystem.MkdirAll("a/b/c", 0o755)
-	_ = afero.WriteFile(fileSystem, "a/b/c/myFile", []byte("foo"), 0o644)
-	_ = afero.WriteFile(fileSystem, "a/b/c/myOtherFile", []byte(""), 0o644)
+	_ = fileSystem.MkdirAll("a/b/c", dirMode)
+	_ = afero.WriteFile(fileSystem, "a/b/c/myFile", []byte("foo"), fileMode)
+	_ = afero.WriteFile(fileSystem, "a/b/c/myOtherFile", []byte(""), fileMode)
 	tests := map[string]struct {
 		files          []string
 		wantExitCalled bool
@@ -82,11 +87,11 @@ func Test_isAcceptableWorkingDir(t *testing.T) {
 		fileSystem = originalFileSystem
 	}()
 	fileSystem = afero.NewMemMapFs()
-	_ = fileSystem.MkdirAll("successful/.git", 0o755)
-	_ = fileSystem.Mkdir("empty", 0o755)
-	_ = fileSystem.Mkdir("defective", 0o755)
-	_ = afero.WriteFile(fileSystem, filepath.Join("defective", ".git"), []byte("data"), 0o644)
-	_ = afero.WriteFile(fileSystem, "not a directory", []byte("gibberish"), 0o644)
+	_ = fileSystem.MkdirAll("successful/.git", dirMode)
+	_ = fileSystem.Mkdir("empty", dirMode)
+	_ = fileSystem.Mkdir("defective", dirMode)
+	_ = afero.WriteFile(fileSystem, filepath.Join("defective", ".git"), []byte("data"), fileMode)
+	_ = afero.WriteFile(fileSystem, "not a directory", []byte("gibberish"), fileMode)
 	tests := map[string]struct {
 		candidate string
 		want      bool
@@ -127,8 +132,8 @@ func TestWorkingDir(t *testing.T) {
 		recordedCode = code
 	}
 	fileSystem = afero.NewMemMapFs()
-	_ = fileSystem.MkdirAll(filepath.Join("..", ".git"), 0o755)
-	_ = fileSystem.MkdirAll(filepath.Join("happy", ".git"), 0o755)
+	_ = fileSystem.MkdirAll(filepath.Join("..", ".git"), dirMode)
+	_ = fileSystem.MkdirAll(filepath.Join("happy", ".git"), dirMode)
 	tests := map[string]struct {
 		workDir     string
 		dirFromEnv  bool
@@ -341,11 +346,11 @@ func Test_allDirs(t *testing.T) {
 		fileSystem = originalFileSystem
 	}()
 	fileSystem = afero.NewMemMapFs()
-	_ = fileSystem.MkdirAll("a/b/c", 0o755)
-	_ = fileSystem.Mkdir("a/b/c/d", 0o755)
-	_ = fileSystem.Mkdir("a/b/c/e", 0o755)
-	_ = afero.WriteFile(fileSystem, "a/b/c/f", []byte("data"), 0o644)
-	_ = afero.WriteFile(fileSystem, "a/b/c/e/x", []byte("data"), 0o644)
+	_ = fileSystem.MkdirAll("a/b/c", dirMode)
+	_ = fileSystem.Mkdir("a/b/c/d", dirMode)
+	_ = fileSystem.Mkdir("a/b/c/e", dirMode)
+	_ = afero.WriteFile(fileSystem, "a/b/c/f", []byte("data"), fileMode)
+	_ = afero.WriteFile(fileSystem, "a/b/c/e/x", []byte("data"), fileMode)
 	tests := map[string]struct {
 		top     string
 		want    []string
@@ -424,9 +429,9 @@ func Test_includesRelevantFiles(t *testing.T) {
 		fileSystem = originalFileSystem
 	}()
 	fileSystem = afero.NewMemMapFs()
-	_ = fileSystem.MkdirAll("a/b/c", 0o755)
-	_ = afero.WriteFile(fileSystem, "a/foo_test.go", []byte("test stuff"), 0o644)
-	_ = afero.WriteFile(fileSystem, "a/b/foo.go", []byte("source code"), 0o644)
+	_ = fileSystem.MkdirAll("a/b/c", dirMode)
+	_ = afero.WriteFile(fileSystem, "a/foo_test.go", []byte("test stuff"), fileMode)
+	_ = afero.WriteFile(fileSystem, "a/b/foo.go", []byte("source code"), fileMode)
 	tests := map[string]struct {
 		entries []fs.FileInfo
 		dir     string
@@ -453,18 +458,43 @@ func Test_sourceDirs(t *testing.T) {
 		fileSystem = originalFileSystem
 	}()
 	fileSystem = afero.NewMemMapFs()
-	_ = fileSystem.MkdirAll("a/b/c", 0o755)
-	_ = afero.WriteFile(fileSystem, "a/foo_test.go", []byte("test stuff"), 0o644)
-	_ = afero.WriteFile(fileSystem, "a/b/foo.go", []byte("source code"), 0o644)
+	_ = fileSystem.MkdirAll("x/y/z", dirMode)
+	_ = afero.WriteFile(fileSystem, "x/goo.go", []byte("goo"), fileMode)
+	_ = afero.WriteFile(fileSystem, "x/y/goop.go", []byte("goop"), fileMode)
+	_ = afero.WriteFile(fileSystem, "x/y/z/good.go", []byte("good"), fileMode)
+	_ = fileSystem.MkdirAll("a/b/c", dirMode)
+	_ = afero.WriteFile(fileSystem, "a/foo_test.go", []byte("test stuff"), fileMode)
+	_ = afero.WriteFile(fileSystem, "a/b/foo.go", []byte("source code"), fileMode)
 	tests := map[string]struct {
 		workDir string
 		want    []string
 		wantErr bool
 	}{
-		"error": {workDir: "no such dir", wantErr: true},
-		"a":     {workDir: "a", want: []string{"b"}},
-		"b":     {workDir: "a/b", want: []string{""}},
-		"c":     {workDir: "a/b/c", want: []string{}},
+		"many dirs - including the work dir": {
+			workDir: "x",
+			want:    []string{"", "y", "y/z"},
+			wantErr: false,
+		},
+		"error": {
+			workDir: "no such dir",
+			want:    nil,
+			wantErr: true,
+		},
+		"a": {
+			workDir: "a",
+			want:    []string{"b"},
+			wantErr: false,
+		},
+		"b": {
+			workDir: "a/b",
+			want:    []string{""},
+			wantErr: false,
+		},
+		"c": {
+			workDir: "a/b/c",
+			want:    []string{},
+			wantErr: false,
+		},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -491,11 +521,11 @@ func TestGenerateDocumentation(t *testing.T) {
 		executor = originalExecutor
 	}()
 	fileSystem = afero.NewMemMapFs()
-	_ = fileSystem.MkdirAll("a/b/c", 0o755)
-	_ = afero.WriteFile(fileSystem, "a/foo_test.go", []byte("test stuff"), 0o644)
-	_ = afero.WriteFile(fileSystem, "a/b/foo.go", []byte("source code"), 0o644)
-	_ = fileSystem.MkdirAll("workDir/dir1/dir2/dir3", 0o755)
-	_ = afero.WriteFile(fileSystem, "workDir/dir1/dir2/dir3/bar.go", []byte("some code"), 0o644)
+	_ = fileSystem.MkdirAll("a/b/c", dirMode)
+	_ = afero.WriteFile(fileSystem, "a/foo_test.go", []byte("test stuff"), fileMode)
+	_ = afero.WriteFile(fileSystem, "a/b/foo.go", []byte("source code"), fileMode)
+	_ = fileSystem.MkdirAll("workDir/dir1/dir2/dir3", dirMode)
+	_ = afero.WriteFile(fileSystem, "workDir/dir1/dir2/dir3/bar.go", []byte("some code"), fileMode)
 	type args struct {
 		a            *goyek.A
 		excludedDirs []string
@@ -532,7 +562,8 @@ func TestGenerateDocumentation(t *testing.T) {
 			workDir:             "no such dir",
 			wantExecutorSuccess: false,
 			wantCommands:        []string{},
-			want:                false},
+			want:                false,
+		},
 		"a": {
 			workDir:             "a",
 			wantExecutorSuccess: true,
@@ -959,10 +990,22 @@ func Test_eatTrailingEOL(t *testing.T) {
 		s    string
 		want string
 	}{
-		"empty string":         {s: "", want: ""},
-		"embedded newlines":    {s: "abc\ndef\rghi", want: "abc\ndef\rghi"},
-		"many newlines":        {s: "abcdef\n\n\r\r\n\r\n", want: "abcdef"},
-		"nothing but newlines": {s: "\n\r\n\r\n\r\r\r\n\n\n\r", want: ""},
+		"empty string": {
+			s:    "",
+			want: "",
+		},
+		"embedded newlines": {
+			s:    "abc\ndef\rghi",
+			want: "abc\ndef\rghi",
+		},
+		"many newlines": {
+			s:    "abc\n\n\r\r\n\r\n",
+			want: "abc",
+		},
+		"nothing but newlines": {
+			s:    "\n\r\n\r\n\r\r\r\n\n\n\r",
+			want: "",
+		},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -985,11 +1028,11 @@ func TestUpdateDependencies(t *testing.T) {
 		aggressive = originalAggressive
 	}()
 	fileSystem = afero.NewMemMapFs()
-	_ = fileSystem.MkdirAll(filepath.Join("work", "build"), 0o755)
-	_ = fileSystem.Mkdir("empty", 0o755)
-	_ = afero.WriteFile(fileSystem, "badDir", []byte("garbage"), 0o644)
-	_ = afero.WriteFile(fileSystem, filepath.Join("work", "go.mod"), []byte("module github.com/majohn-r/tools-build"), 0o644)
-	_ = afero.WriteFile(fileSystem, filepath.Join("work", "build", "go.mod"), []byte("module github.com/majohn-r/tools-build"), 0o644)
+	_ = fileSystem.MkdirAll(filepath.Join("work", "build"), dirMode)
+	_ = fileSystem.Mkdir("empty", dirMode)
+	_ = afero.WriteFile(fileSystem, "badDir", []byte("garbage"), fileMode)
+	_ = afero.WriteFile(fileSystem, filepath.Join("work", "go.mod"), []byte("module github.com/majohn-r/tools-build"), fileMode)
+	_ = afero.WriteFile(fileSystem, filepath.Join("work", "build", "go.mod"), []byte("module github.com/majohn-r/tools-build"), fileMode)
 	tests := map[string]struct {
 		workDir              string
 		getCommandAggressive bool
@@ -1219,6 +1262,88 @@ func Test_restoreEnvVars(t *testing.T) {
 			}
 			if unsets != tt.wantUnset {
 				t.Errorf("restoreEnvVars unset %d, want %d", unsets, tt.wantUnset)
+			}
+		})
+	}
+}
+
+func TestFormatSelective(t *testing.T) {
+	originalWorkingDir := workingDir
+	originalFileSystem := fileSystem
+	originalExecutor := executor
+	defer func() {
+		workingDir = originalWorkingDir
+		fileSystem = originalFileSystem
+		executor = originalExecutor
+	}()
+	fileSystem = afero.NewMemMapFs()
+	_ = fileSystem.MkdirAll("work/x/y/z", dirMode)
+	_ = afero.WriteFile(fileSystem, "work/foo.go", []byte("foo"), fileMode)
+	_ = afero.WriteFile(fileSystem, "work/x/a.go", []byte("a"), fileMode)
+	_ = afero.WriteFile(fileSystem, "work/x/y/b_test.go", []byte("b_test"), fileMode)
+	_ = afero.WriteFile(fileSystem, "work/x/y/z/c.go", []byte("c"), fileMode)
+	_ = fileSystem.MkdirAll("work/.idea/fileTemplates/code", dirMode)
+	_ = afero.WriteFile(fileSystem, "work/.idea/fileTemplates/code/Go Table Test.go", []byte("not a good file"), fileMode)
+	type args struct {
+		a          *goyek.A
+		exclusions []string
+	}
+	tests := map[string]struct {
+		args
+		workingDir          string
+		wantExecutorSuccess bool
+		wantCommand         string
+		want                bool
+	}{
+		"file error": {
+			args:                args{exclusions: []string{"foo"}},
+			workingDir:          "wonk",
+			wantExecutorSuccess: false,
+			wantCommand:         "",
+			want:                false,
+		},
+		"no exclusions succeeds": {
+			args:                args{exclusions: nil},
+			workingDir:          "work",
+			wantExecutorSuccess: true,
+			wantCommand:         "gofmt -e -l -s -w .",
+			want:                true,
+		},
+		"no exclusions fails": {
+			args:                args{exclusions: nil},
+			workingDir:          "work",
+			wantExecutorSuccess: false,
+			wantCommand:         "gofmt -e -l -s -w .",
+			want:                false,
+		},
+		"exclusions succeeds": {
+			args:                args{exclusions: []string{".idea"}},
+			workingDir:          "work",
+			wantExecutorSuccess: true,
+			wantCommand:         "gofmt -e -l -s -w *.go x/*.go x/y/*.go x/y/z/*.go",
+			want:                true,
+		},
+		"exclusions fails": {
+			args:                args{exclusions: []string{".idea"}},
+			workingDir:          "work",
+			wantExecutorSuccess: false,
+			wantCommand:         "gofmt -e -l -s -w *.go x/*.go x/y/*.go x/y/z/*.go",
+			want:                false,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			workingDir = tt.workingDir
+			var gotCommand string
+			executor = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
+				gotCommand = cmd
+				return tt.wantExecutorSuccess
+			}
+			if got := FormatSelective(tt.args.a, tt.args.exclusions); got != tt.want {
+				t.Errorf("FormatSelective() = %v, want %v", got, tt.want)
+			}
+			if gotCommand != tt.wantCommand {
+				t.Errorf("FormatSelective() = %v, want %v", gotCommand, tt.wantCommand)
 			}
 		})
 	}
