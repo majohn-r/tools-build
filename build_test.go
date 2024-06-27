@@ -1,7 +1,8 @@
-package tools_build
+package tools_build_test
 
 import (
 	"bytes"
+	build "github.com/majohn-r/tools-build"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -23,17 +24,17 @@ const (
 func TestClean(t *testing.T) {
 	// note: cannot use memory mapped filesystem; Clean relies on using the os
 	// filesystem to make sure all files are within the working directory
-	originalWorkingDir := workingDir
-	originalExit := exit
-	workingDir = "a/b/c"
+	originalCachedWorkingDir := build.CachedWorkingDir
+	originalExitFn := build.ExitFn
+	build.CachedWorkingDir = "a/b/c"
 	defer func() {
-		workingDir = originalWorkingDir
-		exit = originalExit
-		_ = fileSystem.RemoveAll("a")
+		build.CachedWorkingDir = originalCachedWorkingDir
+		build.ExitFn = originalExitFn
+		_ = build.BuildFS.RemoveAll("a")
 	}()
-	_ = fileSystem.MkdirAll("a/b/c", dirMode)
-	_ = afero.WriteFile(fileSystem, "a/b/c/myFile", []byte("foo"), fileMode)
-	_ = afero.WriteFile(fileSystem, "a/b/c/myOtherFile", []byte(""), fileMode)
+	_ = build.BuildFS.MkdirAll("a/b/c", dirMode)
+	_ = afero.WriteFile(build.BuildFS, "a/b/c/myFile", []byte("foo"), fileMode)
+	_ = afero.WriteFile(build.BuildFS, "a/b/c/myOtherFile", []byte(""), fileMode)
 	tests := map[string]struct {
 		files          []string
 		wantExitCalled bool
@@ -62,17 +63,17 @@ func TestClean(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			gotExitCalled := false
-			exit = func(_ int) {
+			build.ExitFn = func(_ int) {
 				gotExitCalled = true
 			}
-			Clean(tt.files)
+			build.Clean(tt.files)
 			if gotExitCalled != tt.wantExitCalled {
 				t.Errorf("Clean exit called %t, want %t", gotExitCalled, tt.wantExitCalled)
 			}
 			if !gotExitCalled {
 				for _, file := range tt.files {
-					f := filepath.Join(workingDir, file)
-					if fileExists, _ := afero.Exists(fileSystem, f); fileExists {
+					f := filepath.Join(build.CachedWorkingDir, file)
+					if fileExists, _ := afero.Exists(build.BuildFS, f); fileExists {
 						t.Errorf("Clean failed to delete %q", f)
 					}
 				}
@@ -81,17 +82,17 @@ func TestClean(t *testing.T) {
 	}
 }
 
-func Test_isAcceptableWorkingDir(t *testing.T) {
-	originalFileSystem := fileSystem
+func TestUnacceptableWorkingDir(t *testing.T) {
+	originalBuildFS := build.BuildFS
 	defer func() {
-		fileSystem = originalFileSystem
+		build.BuildFS = originalBuildFS
 	}()
-	fileSystem = afero.NewMemMapFs()
-	_ = fileSystem.MkdirAll("successful/.git", dirMode)
-	_ = fileSystem.Mkdir("empty", dirMode)
-	_ = fileSystem.Mkdir("defective", dirMode)
-	_ = afero.WriteFile(fileSystem, filepath.Join("defective", ".git"), []byte("data"), fileMode)
-	_ = afero.WriteFile(fileSystem, "not a directory", []byte("gibberish"), fileMode)
+	build.BuildFS = afero.NewMemMapFs()
+	_ = build.BuildFS.MkdirAll("successful/.git", dirMode)
+	_ = build.BuildFS.Mkdir("empty", dirMode)
+	_ = build.BuildFS.Mkdir("defective", dirMode)
+	_ = afero.WriteFile(build.BuildFS, filepath.Join("defective", ".git"), []byte("data"), fileMode)
+	_ = afero.WriteFile(build.BuildFS, "not a directory", []byte("gibberish"), fileMode)
 	tests := map[string]struct {
 		candidate string
 		want      bool
@@ -105,35 +106,35 @@ func Test_isAcceptableWorkingDir(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			if got := isUnacceptableWorkingDir(tt.candidate); got != tt.want {
-				t.Errorf("isAcceptableWorkingDir() %t, want %t", got, tt.want)
+			if got := build.UnacceptableWorkingDir(tt.candidate); got != tt.want {
+				t.Errorf("UnacceptableWorkingDir() %t, want %t", got, tt.want)
 			}
 		})
 	}
 }
 
 func TestWorkingDir(t *testing.T) {
-	originalFileSystem := fileSystem
-	originalExit := exit
+	originalBuildFS := build.BuildFS
+	originalExitFn := build.ExitFn
 	originalDirValue, originalDirExists := os.LookupEnv("DIR")
-	originalWorkingDir := workingDir
+	originalCachedWorkingDir := build.CachedWorkingDir
 	defer func() {
-		fileSystem = originalFileSystem
-		exit = originalExit
+		build.BuildFS = originalBuildFS
+		build.ExitFn = originalExitFn
 		if originalDirExists {
 			_ = os.Setenv("DIR", originalDirValue)
 		} else {
 			_ = os.Unsetenv("DIR")
 		}
-		workingDir = originalWorkingDir
+		build.CachedWorkingDir = originalCachedWorkingDir
 	}()
 	recordedCode := 0
-	exit = func(code int) {
+	build.ExitFn = func(code int) {
 		recordedCode = code
 	}
-	fileSystem = afero.NewMemMapFs()
-	_ = fileSystem.MkdirAll(filepath.Join("..", ".git"), dirMode)
-	_ = fileSystem.MkdirAll(filepath.Join("happy", ".git"), dirMode)
+	build.BuildFS = afero.NewMemMapFs()
+	_ = build.BuildFS.MkdirAll(filepath.Join("..", ".git"), dirMode)
+	_ = build.BuildFS.MkdirAll(filepath.Join("happy", ".git"), dirMode)
 	tests := map[string]struct {
 		workDir     string
 		dirFromEnv  bool
@@ -149,13 +150,13 @@ func TestWorkingDir(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			recordedCode = 0
-			workingDir = tt.workDir
+			build.CachedWorkingDir = tt.workDir
 			if tt.dirFromEnv {
 				_ = os.Setenv("DIR", tt.dirEnvValue)
 			} else {
 				_ = os.Unsetenv("DIR")
 			}
-			if got := WorkingDir(); got != tt.want {
+			if got := build.WorkingDir(); got != tt.want {
 				t.Errorf("WorkingDir() = %v, want %v", got, tt.want)
 			}
 			if recordedCode != tt.wantCode {
@@ -166,13 +167,13 @@ func TestWorkingDir(t *testing.T) {
 }
 
 func TestRunCommand(t *testing.T) {
-	originalWorkingDir := workingDir
-	originalExecutor := executor
+	originalCachedWorkingDir := build.CachedWorkingDir
+	originalExecFn := build.ExecFn
 	defer func() {
-		workingDir = originalWorkingDir
-		executor = originalExecutor
+		build.CachedWorkingDir = originalCachedWorkingDir
+		build.ExecFn = originalExecFn
 	}()
-	workingDir = "work"
+	build.CachedWorkingDir = "work"
 	type args struct {
 		a       *goyek.A
 		command string
@@ -187,10 +188,10 @@ func TestRunCommand(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			executor = func(_ *goyek.A, _ string, _ ...cmd.Option) bool {
+			build.ExecFn = func(_ *goyek.A, _ string, _ ...cmd.Option) bool {
 				return tt.shouldSucceed
 			}
-			if got := RunCommand(tt.args.a, tt.args.command); got != tt.want {
+			if got := build.RunCommand(tt.args.a, tt.args.command); got != tt.want {
 				t.Errorf("RunCommand() = %v, want %v", got, tt.want)
 			}
 		})
@@ -198,13 +199,13 @@ func TestRunCommand(t *testing.T) {
 }
 
 func TestFormat(t *testing.T) {
-	originalWorkingDir := workingDir
-	originalExecutor := executor
+	originalCachedWorkingDir := build.CachedWorkingDir
+	originalExecFn := build.ExecFn
 	defer func() {
-		workingDir = originalWorkingDir
-		executor = originalExecutor
+		build.CachedWorkingDir = originalCachedWorkingDir
+		build.ExecFn = originalExecFn
 	}()
-	workingDir = "work"
+	build.CachedWorkingDir = "work"
 	tests := map[string]struct {
 		shouldSucceed bool
 		want          bool
@@ -215,11 +216,11 @@ func TestFormat(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			var gotCmd string
-			executor = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
+			build.ExecFn = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
 				gotCmd = cmd
 				return tt.shouldSucceed
 			}
-			if got := Format(nil); got != tt.want {
+			if got := build.Format(nil); got != tt.want {
 				t.Errorf("Format() = %v, want %v", got, tt.want)
 			}
 			if gotCmd != "gofmt -e -l -s -w ." {
@@ -230,13 +231,13 @@ func TestFormat(t *testing.T) {
 }
 
 func TestGenerateCoverageReport(t *testing.T) {
-	originalWorkingDir := workingDir
-	originalExecutor := executor
+	originalCachedWorkingDir := build.CachedWorkingDir
+	originalExecFn := build.ExecFn
 	defer func() {
-		workingDir = originalWorkingDir
-		executor = originalExecutor
+		build.CachedWorkingDir = originalCachedWorkingDir
+		build.ExecFn = originalExecFn
 	}()
-	workingDir = "work"
+	build.CachedWorkingDir = "work"
 	tests := map[string]struct {
 		file               string
 		unitTestsSucceed   bool
@@ -310,7 +311,7 @@ func TestGenerateCoverageReport(t *testing.T) {
 			var gotDisplayCalled = false
 			var gotTestCommand string
 			var gotDisplayCommand string
-			executor = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
+			build.ExecFn = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
 				switch {
 				case strings.HasPrefix(cmd, "go test "):
 					gotTestCommand = cmd
@@ -324,7 +325,7 @@ func TestGenerateCoverageReport(t *testing.T) {
 					return false
 				}
 			}
-			if got := GenerateCoverageReport(nil, tt.file); got != tt.want {
+			if got := build.GenerateCoverageReport(nil, tt.file); got != tt.want {
 				t.Errorf("GenerateCoverageReport() = %v, want %v", got, tt.want)
 			}
 			if gotDisplayCalled != tt.wantDisplayCalled {
@@ -340,17 +341,17 @@ func TestGenerateCoverageReport(t *testing.T) {
 	}
 }
 
-func Test_allDirs(t *testing.T) {
-	originalFileSystem := fileSystem
+func TestAllDirs(t *testing.T) {
+	originalBuildFS := build.BuildFS
 	defer func() {
-		fileSystem = originalFileSystem
+		build.BuildFS = originalBuildFS
 	}()
-	fileSystem = afero.NewMemMapFs()
-	_ = fileSystem.MkdirAll("a/b/c", dirMode)
-	_ = fileSystem.Mkdir("a/b/c/d", dirMode)
-	_ = fileSystem.Mkdir("a/b/c/e", dirMode)
-	_ = afero.WriteFile(fileSystem, "a/b/c/f", []byte("data"), fileMode)
-	_ = afero.WriteFile(fileSystem, "a/b/c/e/x", []byte("data"), fileMode)
+	build.BuildFS = afero.NewMemMapFs()
+	_ = build.BuildFS.MkdirAll("a/b/c", dirMode)
+	_ = build.BuildFS.Mkdir("a/b/c/d", dirMode)
+	_ = build.BuildFS.Mkdir("a/b/c/e", dirMode)
+	_ = afero.WriteFile(build.BuildFS, "a/b/c/f", []byte("data"), fileMode)
+	_ = afero.WriteFile(build.BuildFS, "a/b/c/e/x", []byte("data"), fileMode)
 	tests := map[string]struct {
 		top     string
 		want    []string
@@ -362,13 +363,13 @@ func Test_allDirs(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			got, err := allDirs(tt.top)
+			got, err := build.AllDirs(tt.top)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("allDirs() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("AllDirs() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("allDirs() = %v, want %v", got, tt.want)
+				t.Errorf("AllDirs() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -403,7 +404,7 @@ func (tfm testFileMode) Sys() any {
 	return nil
 }
 
-func Test_isRelevantFile(t *testing.T) {
+func TestIsRelevantFile(t *testing.T) {
 	tests := map[string]struct {
 		entry fs.FileInfo
 		want  bool
@@ -416,22 +417,22 @@ func Test_isRelevantFile(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			if got := isRelevantFile(tt.entry, matchGoSource); got != tt.want {
-				t.Errorf("isRelevantFile() = %v, want %v", got, tt.want)
+			if got := build.IsRelevantFile(tt.entry, build.MatchGoSource); got != tt.want {
+				t.Errorf("IsRelevantFile() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func Test_includesRelevantFiles(t *testing.T) {
-	originalFileSystem := fileSystem
+func TestIncludesRelevantFiles(t *testing.T) {
+	originalBuildFS := build.BuildFS
 	defer func() {
-		fileSystem = originalFileSystem
+		build.BuildFS = originalBuildFS
 	}()
-	fileSystem = afero.NewMemMapFs()
-	_ = fileSystem.MkdirAll("a/b/c", dirMode)
-	_ = afero.WriteFile(fileSystem, "a/foo_test.go", []byte("test stuff"), fileMode)
-	_ = afero.WriteFile(fileSystem, "a/b/foo.go", []byte("source code"), fileMode)
+	build.BuildFS = afero.NewMemMapFs()
+	_ = build.BuildFS.MkdirAll("a/b/c", dirMode)
+	_ = afero.WriteFile(build.BuildFS, "a/foo_test.go", []byte("test stuff"), fileMode)
+	_ = afero.WriteFile(build.BuildFS, "a/b/foo.go", []byte("source code"), fileMode)
 	tests := map[string]struct {
 		entries []fs.FileInfo
 		dir     string
@@ -443,28 +444,28 @@ func Test_includesRelevantFiles(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			if got := includesRelevantFiles(tt.dir, matchGoSource); got != tt.want {
-				t.Errorf("includesRelevantFiles() = %v, want %v", got, tt.want)
+			if got := build.IncludesRelevantFiles(tt.dir, build.MatchGoSource); got != tt.want {
+				t.Errorf("IncludesRelevantFiles() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func Test_sourceDirs(t *testing.T) {
-	originalWorkingDir := workingDir
-	originalFileSystem := fileSystem
+func TestRelevantDirs(t *testing.T) {
+	originalCachedWorkingDir := build.CachedWorkingDir
+	originalBuildFS := build.BuildFS
 	defer func() {
-		workingDir = originalWorkingDir
-		fileSystem = originalFileSystem
+		build.CachedWorkingDir = originalCachedWorkingDir
+		build.BuildFS = originalBuildFS
 	}()
-	fileSystem = afero.NewMemMapFs()
-	_ = fileSystem.MkdirAll("x/y/z", dirMode)
-	_ = afero.WriteFile(fileSystem, "x/goo.go", []byte("goo"), fileMode)
-	_ = afero.WriteFile(fileSystem, "x/y/goop.go", []byte("goop"), fileMode)
-	_ = afero.WriteFile(fileSystem, "x/y/z/good.go", []byte("good"), fileMode)
-	_ = fileSystem.MkdirAll("a/b/c", dirMode)
-	_ = afero.WriteFile(fileSystem, "a/foo_test.go", []byte("test stuff"), fileMode)
-	_ = afero.WriteFile(fileSystem, "a/b/foo.go", []byte("source code"), fileMode)
+	build.BuildFS = afero.NewMemMapFs()
+	_ = build.BuildFS.MkdirAll("x/y/z", dirMode)
+	_ = afero.WriteFile(build.BuildFS, "x/goo.go", []byte("goo"), fileMode)
+	_ = afero.WriteFile(build.BuildFS, "x/y/goop.go", []byte("goop"), fileMode)
+	_ = afero.WriteFile(build.BuildFS, "x/y/z/good.go", []byte("good"), fileMode)
+	_ = build.BuildFS.MkdirAll("a/b/c", dirMode)
+	_ = afero.WriteFile(build.BuildFS, "a/foo_test.go", []byte("test stuff"), fileMode)
+	_ = afero.WriteFile(build.BuildFS, "a/b/foo.go", []byte("source code"), fileMode)
 	tests := map[string]struct {
 		workDir string
 		want    []string
@@ -498,34 +499,34 @@ func Test_sourceDirs(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			workingDir = tt.workDir
-			got, err := relevantDirs(matchGoSource)
+			build.CachedWorkingDir = tt.workDir
+			got, err := build.RelevantDirs(build.MatchGoSource)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("sourceDirs() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("RelevantDirs() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("sourceDirs() = %v, want %v", got, tt.want)
+				t.Errorf("RelevantDirs() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
 func TestGenerateDocumentation(t *testing.T) {
-	originalWorkingDir := workingDir
-	originalFileSystem := fileSystem
-	originalExecutor := executor
+	originalCachedWorkingDir := build.CachedWorkingDir
+	originalBuildFS := build.BuildFS
+	originalExecFn := build.ExecFn
 	defer func() {
-		workingDir = originalWorkingDir
-		fileSystem = originalFileSystem
-		executor = originalExecutor
+		build.CachedWorkingDir = originalCachedWorkingDir
+		build.BuildFS = originalBuildFS
+		build.ExecFn = originalExecFn
 	}()
-	fileSystem = afero.NewMemMapFs()
-	_ = fileSystem.MkdirAll("a/b/c", dirMode)
-	_ = afero.WriteFile(fileSystem, "a/foo_test.go", []byte("test stuff"), fileMode)
-	_ = afero.WriteFile(fileSystem, "a/b/foo.go", []byte("source code"), fileMode)
-	_ = fileSystem.MkdirAll("workDir/dir1/dir2/dir3", dirMode)
-	_ = afero.WriteFile(fileSystem, "workDir/dir1/dir2/dir3/bar.go", []byte("some code"), fileMode)
+	build.BuildFS = afero.NewMemMapFs()
+	_ = build.BuildFS.MkdirAll("a/b/c", dirMode)
+	_ = afero.WriteFile(build.BuildFS, "a/foo_test.go", []byte("test stuff"), fileMode)
+	_ = afero.WriteFile(build.BuildFS, "a/b/foo.go", []byte("source code"), fileMode)
+	_ = build.BuildFS.MkdirAll("workDir/dir1/dir2/dir3", dirMode)
+	_ = afero.WriteFile(build.BuildFS, "workDir/dir1/dir2/dir3/bar.go", []byte("some code"), fileMode)
 	type args struct {
 		a            *goyek.A
 		excludedDirs []string
@@ -598,13 +599,13 @@ func TestGenerateDocumentation(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			workingDir = tt.workDir
+			build.CachedWorkingDir = tt.workDir
 			gotCommands := make([]string, 0)
-			executor = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
+			build.ExecFn = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
 				gotCommands = append(gotCommands, cmd)
 				return tt.wantExecutorSuccess
 			}
-			if got := GenerateDocumentation(tt.args.a, tt.args.excludedDirs); got != tt.want {
+			if got := build.GenerateDocumentation(tt.args.a, tt.args.excludedDirs); got != tt.want {
 				t.Errorf("GenerateDocumentation() = %v, want %v", got, tt.want)
 			}
 			if !reflect.DeepEqual(gotCommands, tt.wantCommands) {
@@ -615,14 +616,14 @@ func TestGenerateDocumentation(t *testing.T) {
 }
 
 func TestInstall(t *testing.T) {
-	originalWorkingDir := workingDir
-	originalExecutor := executor
+	originalCachedWorkingDir := build.CachedWorkingDir
+	originalExecFn := build.ExecFn
 	defer func() {
-		workingDir = originalWorkingDir
-		executor = originalExecutor
+		build.CachedWorkingDir = originalCachedWorkingDir
+		build.ExecFn = originalExecFn
 	}()
 	// not used, and keeps WorkingDir() from getting exercised
-	workingDir = "work"
+	build.CachedWorkingDir = "work"
 	type args struct {
 		a           *goyek.A
 		packageName string
@@ -649,11 +650,11 @@ func TestInstall(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			gotCommand := ""
-			executor = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
+			build.ExecFn = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
 				gotCommand = cmd
 				return tt.installSucceeds
 			}
-			if got := Install(tt.args.a, tt.args.packageName); got != tt.want {
+			if got := build.Install(tt.args.a, tt.args.packageName); got != tt.want {
 				t.Errorf("Install() = %v, want %v", got, tt.want)
 			}
 			if gotCommand != tt.wantCommand {
@@ -664,14 +665,14 @@ func TestInstall(t *testing.T) {
 }
 
 func TestLint(t *testing.T) {
-	originalWorkingDir := workingDir
-	originalExecutor := executor
+	originalCachedWorkingDir := build.CachedWorkingDir
+	originalExecFn := build.ExecFn
 	defer func() {
-		workingDir = originalWorkingDir
-		executor = originalExecutor
+		build.CachedWorkingDir = originalCachedWorkingDir
+		build.ExecFn = originalExecFn
 	}()
 	// not used, and keeps WorkingDir() from getting exercised
-	workingDir = "work"
+	build.CachedWorkingDir = "work"
 	tests := map[string]struct {
 		installSucceeds bool
 		lintSucceeds    bool
@@ -707,7 +708,7 @@ func TestLint(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			gotCommands := make([]string, 0)
-			executor = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
+			build.ExecFn = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
 				gotCommands = append(gotCommands, cmd)
 				if strings.Contains(cmd, " install ") {
 					return tt.installSucceeds
@@ -718,7 +719,7 @@ func TestLint(t *testing.T) {
 				t.Errorf("Lint() sent unexpected command: %q", cmd)
 				return false
 			}
-			if got := Lint(nil); got != tt.want {
+			if got := build.Lint(nil); got != tt.want {
 				t.Errorf("Lint() = %v, want %v", got, tt.want)
 			}
 			if !reflect.DeepEqual(gotCommands, tt.wantCommands) {
@@ -729,14 +730,14 @@ func TestLint(t *testing.T) {
 }
 
 func TestNilAway(t *testing.T) {
-	originalWorkingDir := workingDir
-	originalExecutor := executor
+	originalCachedWorkingDir := build.CachedWorkingDir
+	originalExecFn := build.ExecFn
 	defer func() {
-		workingDir = originalWorkingDir
-		executor = originalExecutor
+		build.CachedWorkingDir = originalCachedWorkingDir
+		build.ExecFn = originalExecFn
 	}()
 	// not used, and keeps WorkingDir() from getting exercised
-	workingDir = "work"
+	build.CachedWorkingDir = "work"
 	tests := map[string]struct {
 		installSucceeds bool
 		nilawaySucceeds bool
@@ -772,7 +773,7 @@ func TestNilAway(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			gotCommands := make([]string, 0)
-			executor = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
+			build.ExecFn = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
 				gotCommands = append(gotCommands, cmd)
 				if strings.Contains(cmd, " install ") {
 					return tt.installSucceeds
@@ -783,7 +784,7 @@ func TestNilAway(t *testing.T) {
 				t.Errorf("NilAway() sent unexpected command: %q", cmd)
 				return false
 			}
-			if got := NilAway(nil); got != tt.want {
+			if got := build.NilAway(nil); got != tt.want {
 				t.Errorf("NilAway() = %v, want %v", got, tt.want)
 			}
 			if !reflect.DeepEqual(gotCommands, tt.wantCommands) {
@@ -794,13 +795,13 @@ func TestNilAway(t *testing.T) {
 }
 
 func TestUnitTests(t *testing.T) {
-	originalWorkingDir := workingDir
-	originalExecutor := executor
+	originalCachedWorkingDir := build.CachedWorkingDir
+	originalExecFn := build.ExecFn
 	defer func() {
-		workingDir = originalWorkingDir
-		executor = originalExecutor
+		build.CachedWorkingDir = originalCachedWorkingDir
+		build.ExecFn = originalExecFn
 	}()
-	workingDir = "work"
+	build.CachedWorkingDir = "work"
 	tests := map[string]struct {
 		shouldSucceed bool
 		want          bool
@@ -811,11 +812,11 @@ func TestUnitTests(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			var gotCmd string
-			executor = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
+			build.ExecFn = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
 				gotCmd = cmd
 				return tt.shouldSucceed
 			}
-			if got := UnitTests(nil); got != tt.want {
+			if got := build.UnitTests(nil); got != tt.want {
 				t.Errorf("UnitTests() = %v, want %v", got, tt.want)
 			}
 			if gotCmd != "go test -cover ./..." {
@@ -826,14 +827,14 @@ func TestUnitTests(t *testing.T) {
 }
 
 func TestVulnerabilityCheck(t *testing.T) {
-	originalWorkingDir := workingDir
-	originalExecutor := executor
+	originalCachedWorkingDir := build.CachedWorkingDir
+	originalExecFn := build.ExecFn
 	defer func() {
-		workingDir = originalWorkingDir
-		executor = originalExecutor
+		build.CachedWorkingDir = originalCachedWorkingDir
+		build.ExecFn = originalExecFn
 	}()
 	// not used, and keeps WorkingDir() from getting exercised
-	workingDir = "work"
+	build.CachedWorkingDir = "work"
 	tests := map[string]struct {
 		installSucceeds            bool
 		vulnerabilityCheckSucceeds bool
@@ -869,7 +870,7 @@ func TestVulnerabilityCheck(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			gotCommands := make([]string, 0)
-			executor = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
+			build.ExecFn = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
 				gotCommands = append(gotCommands, cmd)
 				if strings.Contains(cmd, " install ") {
 					return tt.installSucceeds
@@ -880,7 +881,7 @@ func TestVulnerabilityCheck(t *testing.T) {
 				t.Errorf("VulnerabilityCheck() sent unexpected command: %q", cmd)
 				return false
 			}
-			if got := VulnerabilityCheck(nil); got != tt.want {
+			if got := build.VulnerabilityCheck(nil); got != tt.want {
 				t.Errorf("VulnerabilityCheck() = %v, want %v", got, tt.want)
 			}
 			if !reflect.DeepEqual(gotCommands, tt.wantCommands) {
@@ -890,7 +891,7 @@ func TestVulnerabilityCheck(t *testing.T) {
 	}
 }
 
-func Test_isMalformedFileName(t *testing.T) {
+func TestIsMalformedFileName(t *testing.T) {
 	tests := map[string]struct {
 		f    string
 		want bool
@@ -916,17 +917,17 @@ func Test_isMalformedFileName(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			if got := isMalformedFileName(tt.f); got != tt.want {
-				t.Errorf("isMalformedFileName() = %v, want %v", got, tt.want)
+			if got := build.IsMalformedFileName(tt.f); got != tt.want {
+				t.Errorf("IsMalformedFileName() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func Test_printBuffer(t *testing.T) {
-	originalPrintLine := printLine
+func TestPrintBuffer(t *testing.T) {
+	originalPrintlnFn := build.PrintlnFn
 	defer func() {
-		printLine = originalPrintLine
+		build.PrintlnFn = originalPrintlnFn
 	}()
 	tests := map[string]struct {
 		data      string
@@ -939,28 +940,28 @@ func Test_printBuffer(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			gotPrint := false
-			printLine = func(_ ...any) (int, error) {
+			build.PrintlnFn = func(_ ...any) (int, error) {
 				gotPrint = true
 				return 0, nil
 			}
 			buffer := &bytes.Buffer{}
 			buffer.WriteString(tt.data)
-			printBuffer(buffer)
+			build.PrintBuffer(buffer)
 			if gotPrint != tt.wantPrint {
-				t.Errorf("printBuffer got %t, want %t", gotPrint, tt.wantPrint)
+				t.Errorf("PrintBuffer got %t, want %t", gotPrint, tt.wantPrint)
 			}
 		})
 	}
 }
 
 func TestGenerate(t *testing.T) {
-	originalWorkingDir := workingDir
-	originalExecutor := executor
+	originalCachedWorkingDir := build.CachedWorkingDir
+	originalExecFn := build.ExecFn
 	defer func() {
-		workingDir = originalWorkingDir
-		executor = originalExecutor
+		build.CachedWorkingDir = originalCachedWorkingDir
+		build.ExecFn = originalExecFn
 	}()
-	workingDir = "work"
+	build.CachedWorkingDir = "work"
 	tests := map[string]struct {
 		shouldSucceed bool
 		want          bool
@@ -971,11 +972,11 @@ func TestGenerate(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			var gotCmd string
-			executor = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
+			build.ExecFn = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
 				gotCmd = cmd
 				return tt.shouldSucceed
 			}
-			if got := Generate(nil); got != tt.want {
+			if got := build.Generate(nil); got != tt.want {
 				t.Errorf("Generate() = %v, want %v", got, tt.want)
 			}
 			if gotCmd != "go generate -x ./..." {
@@ -985,7 +986,7 @@ func TestGenerate(t *testing.T) {
 	}
 }
 
-func Test_eatTrailingEOL(t *testing.T) {
+func TestEatTrailingEOL(t *testing.T) {
 	tests := map[string]struct {
 		s    string
 		want string
@@ -1009,30 +1010,30 @@ func Test_eatTrailingEOL(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			if got := eatTrailingEOL(tt.s); got != tt.want {
-				t.Errorf("eatTrailingEOL() = %v, want %v", got, tt.want)
+			if got := build.EatTrailingEOL(tt.s); got != tt.want {
+				t.Errorf("EatTrailingEOL() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
 func TestUpdateDependencies(t *testing.T) {
-	originalWorkingDir := workingDir
-	originalExecutor := executor
-	originalFileSystem := fileSystem
-	originalAggressive := aggressive
+	originalCachedWorkingDir := build.CachedWorkingDir
+	originalExecFn := build.ExecFn
+	originalBuildFS := build.BuildFS
+	originalAggressiveFlag := build.AggressiveFlag
 	defer func() {
-		workingDir = originalWorkingDir
-		executor = originalExecutor
-		fileSystem = originalFileSystem
-		aggressive = originalAggressive
+		build.CachedWorkingDir = originalCachedWorkingDir
+		build.ExecFn = originalExecFn
+		build.BuildFS = originalBuildFS
+		build.AggressiveFlag = originalAggressiveFlag
 	}()
-	fileSystem = afero.NewMemMapFs()
-	_ = fileSystem.MkdirAll(filepath.Join("work", "build"), dirMode)
-	_ = fileSystem.Mkdir("empty", dirMode)
-	_ = afero.WriteFile(fileSystem, "badDir", []byte("garbage"), fileMode)
-	_ = afero.WriteFile(fileSystem, filepath.Join("work", "go.mod"), []byte("module github.com/majohn-r/tools-build"), fileMode)
-	_ = afero.WriteFile(fileSystem, filepath.Join("work", "build", "go.mod"), []byte("module github.com/majohn-r/tools-build"), fileMode)
+	build.BuildFS = afero.NewMemMapFs()
+	_ = build.BuildFS.MkdirAll(filepath.Join("work", "build"), dirMode)
+	_ = build.BuildFS.Mkdir("empty", dirMode)
+	_ = afero.WriteFile(build.BuildFS, "badDir", []byte("garbage"), fileMode)
+	_ = afero.WriteFile(build.BuildFS, filepath.Join("work", "go.mod"), []byte("module github.com/majohn-r/tools-build"), fileMode)
+	_ = afero.WriteFile(build.BuildFS, filepath.Join("work", "build", "go.mod"), []byte("module github.com/majohn-r/tools-build"), fileMode)
 	tests := map[string]struct {
 		workDir              string
 		getCommandAggressive bool
@@ -1081,8 +1082,8 @@ func TestUpdateDependencies(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			gotCommands := make([]string, 0)
-			workingDir = tt.workDir
-			executor = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
+			build.CachedWorkingDir = tt.workDir
+			build.ExecFn = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
 				gotCommands = append(gotCommands, cmd)
 				if strings.HasPrefix(cmd, "go get") {
 					return tt.getSucceeds
@@ -1094,8 +1095,8 @@ func TestUpdateDependencies(t *testing.T) {
 				return false
 			}
 			a := tt.getCommandAggressive
-			aggressive = &a
-			if got := UpdateDependencies(nil); got != tt.want {
+			build.AggressiveFlag = &a
+			if got := build.UpdateDependencies(nil); got != tt.want {
 				t.Errorf("UpdateDependencies() = %v, want %v", got, tt.want)
 			}
 			if !reflect.DeepEqual(gotCommands, tt.wantCommands) {
@@ -1105,26 +1106,26 @@ func TestUpdateDependencies(t *testing.T) {
 	}
 }
 
-func Test_setupEnvVars(t *testing.T) {
+func TestSetupEnvVars(t *testing.T) {
 	var1 := "VAR1"
 	var2 := "VAR2"
 	var3 := "VAR3"
 	vars := []string{var1, var2, var3}
-	originalVars := make([]envVar, 3)
+	originalVars := make([]build.EnvVarMemento, 3)
 	for k, s := range vars {
 		val, defined := os.LookupEnv(s)
-		originalVars[k] = envVar{
-			name:  s,
-			value: val,
-			unset: !defined,
+		originalVars[k] = build.EnvVarMemento{
+			Name:  s,
+			Value: val,
+			Unset: !defined,
 		}
 	}
 	defer func() {
 		for _, ev := range originalVars {
-			if ev.unset {
-				_ = os.Unsetenv(ev.name)
+			if ev.Unset {
+				_ = os.Unsetenv(ev.Name)
 			} else {
-				_ = os.Setenv(ev.name, ev.value)
+				_ = os.Setenv(ev.Name, ev.Value)
 			}
 		}
 	}()
@@ -1132,49 +1133,49 @@ func Test_setupEnvVars(t *testing.T) {
 	_ = os.Setenv(var1, val)
 	_ = os.Unsetenv(var2)
 	tests := map[string]struct {
-		input  []envVar
-		want   []envVar
+		input  []build.EnvVarMemento
+		want   []build.EnvVarMemento
 		wantOk bool
 	}{
 		"error case": {
-			input: []envVar{
+			input: []build.EnvVarMemento{
 				{
-					name:  var3,
-					value: "foo",
-					unset: false,
+					Name:  var3,
+					Value: "foo",
+					Unset: false,
 				},
 				{
-					name:  var3,
-					value: "bar",
-					unset: false,
+					Name:  var3,
+					Value: "bar",
+					Unset: false,
 				},
 			},
 			want:   nil,
 			wantOk: false,
 		},
 		"thorough": {
-			input: []envVar{
+			input: []build.EnvVarMemento{
 				{
-					name:  var1,
-					value: "",
-					unset: true,
+					Name:  var1,
+					Value: "",
+					Unset: true,
 				},
 				{
-					name:  var2,
-					value: "foo",
-					unset: false,
+					Name:  var2,
+					Value: "foo",
+					Unset: false,
 				},
 			},
-			want: []envVar{
+			want: []build.EnvVarMemento{
 				{
-					name:  var1,
-					value: val,
-					unset: false,
+					Name:  var1,
+					Value: val,
+					Unset: false,
 				},
 				{
-					name:  var2,
-					value: "",
-					unset: true,
+					Name:  var2,
+					Value: "",
+					Unset: true,
 				},
 			},
 			wantOk: true,
@@ -1182,65 +1183,65 @@ func Test_setupEnvVars(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			got, gotOk := setupEnvVars(tt.input)
+			got, gotOk := build.SetupEnvVars(tt.input)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("setupEnvVars() = %v, want %v", got, tt.want)
+				t.Errorf("SetupEnvVars() = %v, want %v", got, tt.want)
 			}
 			if gotOk != tt.wantOk {
-				t.Errorf("setupEnvVars() = %t, want %t", gotOk, tt.wantOk)
+				t.Errorf("SetupEnvVars() = %t, want %t", gotOk, tt.wantOk)
 			}
 		})
 	}
 }
 
-func Test_restoreEnvVars(t *testing.T) {
-	originalSetenv := setenv
-	originalUnsetenv := unsetenv
+func TestRestoreEnvVars(t *testing.T) {
+	originalSetenvFn := build.SetenvFn
+	originalUnsetenvFn := build.UnsetenvFn
 	defer func() {
-		setenv = originalSetenv
-		unsetenv = originalUnsetenv
+		build.SetenvFn = originalSetenvFn
+		build.UnsetenvFn = originalUnsetenvFn
 	}()
 	var sets int
 	var unsets int
-	setenv = func(_, _ string) error {
+	build.SetenvFn = func(_, _ string) error {
 		sets++
 		return nil
 	}
-	unsetenv = func(_ string) error {
+	build.UnsetenvFn = func(_ string) error {
 		unsets++
 		return nil
 	}
 	tests := map[string]struct {
-		saved     []envVar
+		saved     []build.EnvVarMemento
 		wantSet   int
 		wantUnset int
 	}{
 		"mix": {
-			saved: []envVar{
+			saved: []build.EnvVarMemento{
 				{
-					name:  "v1",
-					value: "val1",
-					unset: false,
+					Name:  "v1",
+					Value: "val1",
+					Unset: false,
 				},
 				{
-					name:  "v2",
-					value: "",
-					unset: true,
+					Name:  "v2",
+					Value: "",
+					Unset: true,
 				},
 				{
-					name:  "v3",
-					value: "val3",
-					unset: false,
+					Name:  "v3",
+					Value: "val3",
+					Unset: false,
 				},
 				{
-					name:  "v4",
-					value: "",
-					unset: true,
+					Name:  "v4",
+					Value: "",
+					Unset: true,
 				},
 				{
-					name:  "v5",
-					value: "",
-					unset: true,
+					Name:  "v5",
+					Value: "",
+					Unset: true,
 				},
 			},
 			wantSet:   2,
@@ -1256,36 +1257,36 @@ func Test_restoreEnvVars(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			sets = 0
 			unsets = 0
-			restoreEnvVars(tt.saved)
+			build.RestoreEnvVars(tt.saved)
 			if sets != tt.wantSet {
-				t.Errorf("restoreEnvVars set %d, want %d", sets, tt.wantSet)
+				t.Errorf("RestoreEnvVars set %d, want %d", sets, tt.wantSet)
 			}
 			if unsets != tt.wantUnset {
-				t.Errorf("restoreEnvVars unset %d, want %d", unsets, tt.wantUnset)
+				t.Errorf("RestoreEnvVars Unset %d, want %d", unsets, tt.wantUnset)
 			}
 		})
 	}
 }
 
 func TestFormatSelective(t *testing.T) {
-	originalWorkingDir := workingDir
-	originalFileSystem := fileSystem
-	originalExecutor := executor
+	originalCachedWorkingDir := build.CachedWorkingDir
+	originalBuildFS := build.BuildFS
+	originalExecFn := build.ExecFn
 	defer func() {
-		workingDir = originalWorkingDir
-		fileSystem = originalFileSystem
-		executor = originalExecutor
+		build.CachedWorkingDir = originalCachedWorkingDir
+		build.BuildFS = originalBuildFS
+		build.ExecFn = originalExecFn
 	}()
-	fileSystem = afero.NewMemMapFs()
-	_ = fileSystem.MkdirAll("work/x/y/z", dirMode)
-	_ = fileSystem.MkdirAll("work/go", dirMode)
-	_ = afero.WriteFile(fileSystem, "work/foo.go", []byte("foo"), fileMode)
-	_ = afero.WriteFile(fileSystem, "work/foo_test.go", []byte("foo"), fileMode)
-	_ = afero.WriteFile(fileSystem, "work/x/a.go", []byte("a"), fileMode)
-	_ = afero.WriteFile(fileSystem, "work/x/y/b_test.go", []byte("b_test"), fileMode)
-	_ = afero.WriteFile(fileSystem, "work/x/y/z/c.go", []byte("c"), fileMode)
-	_ = fileSystem.MkdirAll("work/.idea/fileTemplates/code", dirMode)
-	_ = afero.WriteFile(fileSystem, "work/.idea/fileTemplates/code/Go Table Test.go", []byte("not a good file"), fileMode)
+	build.BuildFS = afero.NewMemMapFs()
+	_ = build.BuildFS.MkdirAll("work/x/y/z", dirMode)
+	_ = build.BuildFS.MkdirAll("work/go", dirMode)
+	_ = afero.WriteFile(build.BuildFS, "work/foo.go", []byte("foo"), fileMode)
+	_ = afero.WriteFile(build.BuildFS, "work/foo_test.go", []byte("foo"), fileMode)
+	_ = afero.WriteFile(build.BuildFS, "work/x/a.go", []byte("a"), fileMode)
+	_ = afero.WriteFile(build.BuildFS, "work/x/y/b_test.go", []byte("b_test"), fileMode)
+	_ = afero.WriteFile(build.BuildFS, "work/x/y/z/c.go", []byte("c"), fileMode)
+	_ = build.BuildFS.MkdirAll("work/.idea/fileTemplates/code", dirMode)
+	_ = afero.WriteFile(build.BuildFS, "work/.idea/fileTemplates/code/Go Table Test.go", []byte("not a good file"), fileMode)
 	type args struct {
 		a          *goyek.A
 		exclusions []string
@@ -1335,13 +1336,13 @@ func TestFormatSelective(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			workingDir = tt.workingDir
+			build.CachedWorkingDir = tt.workingDir
 			var gotCommand string
-			executor = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
+			build.ExecFn = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
 				gotCommand = cmd
 				return tt.wantExecutorSuccess
 			}
-			if got := FormatSelective(tt.args.a, tt.args.exclusions); got != tt.want {
+			if got := build.FormatSelective(tt.args.a, tt.args.exclusions); got != tt.want {
 				t.Errorf("FormatSelective() = %v, want %v", got, tt.want)
 			}
 			if gotCommand != tt.wantCommand {

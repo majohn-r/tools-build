@@ -15,15 +15,22 @@ import (
 )
 
 var (
-	fileSystem = afero.NewOsFs()
-	workingDir = ""
-	aggressive = flag.Bool("aggressive", false, "set to make dependency updates more aggressive")
-	// function vars make it easy for tests to stub out functionality
-	executor  = cmd.Exec
-	exit      = os.Exit
-	printLine = fmt.Println
-	setenv    = os.Setenv
-	unsetenv  = os.Unsetenv
+	// BuildFS is the file system used; accessible so that tests can override it
+	BuildFS = afero.NewOsFs()
+	// CachedWorkingDir is the cached working directory
+	CachedWorkingDir = ""
+	// AggressiveFlag is a flag for the UpdateDependencies function to more aggressively get updates
+	AggressiveFlag = flag.Bool("aggressive", false, "set to make dependency updates more aggressive")
+	// ExecFn is the goyek Exec function. set as a variable so that unit tests can override
+	ExecFn = cmd.Exec
+	// ExitFn is the os.Exit function, set as a variable so that unit tests can override
+	ExitFn = os.Exit
+	// PrintlnFn is the fmt.Println function, set as a variable so that unit tests can override
+	PrintlnFn = fmt.Println
+	// SetenvFn is the os.Setenv function, set as a variable so that unit tests can override
+	SetenvFn = os.Setenv
+	// UnsetenvFn is the os.Unsetenv function, set as a variable so that unit tests can override
+	UnsetenvFn = os.Unsetenv
 )
 
 // Clean deletes the named files, which must be located in, or in a subdirectory
@@ -35,28 +42,30 @@ func Clean(files []string) {
 	for _, file := range files {
 		if isIllegalFileName(file) {
 			_, _ = fmt.Fprintf(os.Stderr, "file %q will not be removed, exiting the build\n", file)
-			exit(1)
+			ExitFn(1)
 		}
 		openFile, err := workingFS.Open(file)
 		if err == nil {
 			_ = openFile.Close()
-			_ = fileSystem.Remove(filepath.Join(WorkingDir(), file))
+			_ = BuildFS.Remove(filepath.Join(WorkingDir(), file))
 		}
 	}
 }
 
 func isIllegalFileName(path string) bool {
-	return path == "" || isMalformedFileName(path)
+	return path == "" || IsMalformedFileName(path)
 }
 
-func isMalformedFileName(path string) bool {
+// IsMalformedFileName determines whether a file name is malformed, such that it could be used to access a file outside
+// the working directory (starts with '/' or '\\', or contains a path component of '..'
+func IsMalformedFileName(path string) bool {
 	if path == "" {
 		return false
 	}
 	if startsWith(path, "/") || startsWith(path, "\\") {
 		return true
 	}
-	dir, file := filepath.Split(canonicalizePath(path))
+	dir, file := filepath.Split(canonicalPath(path))
 	if file == ".." {
 		return true
 	}
@@ -64,10 +73,10 @@ func isMalformedFileName(path string) bool {
 		// happens when the original path begins with a drive letter and colon
 		return true
 	}
-	return isMalformedFileName(strings.TrimSuffix(dir, "/"))
+	return IsMalformedFileName(strings.TrimSuffix(dir, "/"))
 }
 
-func canonicalizePath(path string) string {
+func canonicalPath(path string) string {
 	if strings.Contains(path, "\\") {
 		return strings.ReplaceAll(path, "\\", "/")
 	}
@@ -87,7 +96,7 @@ func FormatSelective(a *goyek.A, exclusions []string) bool {
 		return Format(a)
 	}
 	printIt("cleaning up source code formatting, excluding folders", exclusions)
-	srcDirs, err := relevantDirs(matchAnyGoFile)
+	srcDirs, err := RelevantDirs(matchAnyGoFile)
 	if err != nil {
 		return false
 	}
@@ -95,7 +104,7 @@ func FormatSelective(a *goyek.A, exclusions []string) bool {
 	for _, src := range srcDirs {
 		switch src {
 		case "":
-			entries, _ := afero.ReadDir(fileSystem, WorkingDir())
+			entries, _ := afero.ReadDir(BuildFS, WorkingDir())
 			for _, entry := range entries {
 				if !entry.IsDir() && matchAnyGoFile(entry.Name()) {
 					command = append(command, entry.Name())
@@ -143,7 +152,7 @@ func GenerateCoverageReport(a *goyek.A, coverageDataFile string) bool {
 // GenerateDocumentation generates documentation of the code, outputting it to
 // stdout; returns false on error
 func GenerateDocumentation(a *goyek.A, excludedDirs []string) bool {
-	dirs, err := relevantDirs(matchGoSource)
+	dirs, err := RelevantDirs(MatchGoSource)
 	if err != nil {
 		return false
 	}
@@ -166,7 +175,7 @@ func GenerateDocumentation(a *goyek.A, excludedDirs []string) bool {
 			}
 		}
 	}
-	printBuffer(o)
+	PrintBuffer(o)
 	return true
 }
 
@@ -188,7 +197,8 @@ func matchModuleFile(name string) bool {
 	return name == "go.mod"
 }
 
-func matchGoSource(name string) bool {
+// MatchGoSource matches a file name ending in '.go', but does not match test files.
+func MatchGoSource(name string) bool {
 	return endsIn(name, ".go") && !endsIn(name, "_test.go") && !startsWith(name, "testing")
 }
 
@@ -196,19 +206,22 @@ func matchAnyGoFile(name string) bool {
 	return endsIn(name, ".go")
 }
 
-func printBuffer(b *bytes.Buffer) {
-	s := eatTrailingEOL(b.String())
+// PrintBuffer sends the buffer contents to stdout, but first strips trailing EOL characters, and then only prints the
+// remaining content if that content is not empty
+func PrintBuffer(b *bytes.Buffer) {
+	s := EatTrailingEOL(b.String())
 	if s != "" {
 		printIt(s)
 	}
 }
 
-func eatTrailingEOL(s string) string {
+// EatTrailingEOL removes trailing \n and \r characters from the end of a string; recurses.
+func EatTrailingEOL(s string) string {
 	switch {
 	case strings.HasSuffix(s, "\n"):
-		return eatTrailingEOL(strings.TrimSuffix(s, "\n"))
+		return EatTrailingEOL(strings.TrimSuffix(s, "\n"))
 	case strings.HasSuffix(s, "\r"):
-		return eatTrailingEOL(strings.TrimSuffix(s, "\r"))
+		return EatTrailingEOL(strings.TrimSuffix(s, "\r"))
 	default:
 		return s
 	}
@@ -255,31 +268,35 @@ func UnitTests(a *goyek.A) bool {
 	return RunCommand(a, "go test -cover ./...")
 }
 
-type envVar struct {
-	name  string
-	value string
-	unset bool
+// EnvVarMemento captures an environment variable's desired state
+type EnvVarMemento struct {
+	// Name is the variable's name
+	Name string
+	// Value is what the variable should be set to
+	Value string
+	// Unset, if true, means the variable should be unset
+	Unset bool
 }
 
 type directedCommand struct {
 	command string
 	dir     string
-	envVars []envVar
+	envVars []EnvVarMemento
 }
 
 // UpdateDependencies updates module dependencies and prunes the modified go.mod
 // and go.sum files
 func UpdateDependencies(a *goyek.A) bool {
-	dirs, err := relevantDirs(matchModuleFile)
+	dirs, err := RelevantDirs(matchModuleFile)
 	if err != nil {
 		return false
 	}
 	getCommand := directedCommand{command: "go get -u ./..."}
-	if *aggressive {
-		getCommand.envVars = append(getCommand.envVars, envVar{
-			name:  "GOPROXY",
-			value: "direct",
-			unset: false,
+	if *AggressiveFlag {
+		getCommand.envVars = append(getCommand.envVars, EnvVarMemento{
+			Name:  "GOPROXY",
+			Value: "direct",
+			Unset: false,
 		})
 	}
 	tidyCommand := directedCommand{command: "go mod tidy"}
@@ -301,50 +318,51 @@ func UpdateDependencies(a *goyek.A) bool {
 
 func (dC directedCommand) execute(a *goyek.A) bool {
 	outputBuffer := &bytes.Buffer{}
-	defer printBuffer(outputBuffer)
+	defer PrintBuffer(outputBuffer)
 	options := make([]cmd.Option, 3)
 	options[0] = cmd.Dir(dC.dir)
 	options[1] = cmd.Stderr(outputBuffer)
 	options[2] = cmd.Stdout(outputBuffer)
-	savedEnvVars, envVarsOK := setupEnvVars(dC.envVars)
+	savedEnvVars, envVarsOK := SetupEnvVars(dC.envVars)
 	state := envVarsOK
 	if state {
-		defer restoreEnvVars(savedEnvVars)
-		state = executor(a, dC.command, options...)
+		defer RestoreEnvVars(savedEnvVars)
+		state = ExecFn(a, dC.command, options...)
 	}
 	return state
 }
 
-func printRestoration(v envVar) {
-	if v.unset {
-		printIt("restoring (unsetting):", v.name)
+func printRestoration(v EnvVarMemento) {
+	if v.Unset {
+		printIt("restoring (unsetting):", v.Name)
 	} else {
-		printIt("restoring (resetting):", v.name, "<-", v.value)
+		printIt("restoring (resetting):", v.Name, "<-", v.Value)
 	}
 }
 
-func restoreEnvVars(saved []envVar) {
+// RestoreEnvVars reverts the environment changes made by SetupEnvVars
+func RestoreEnvVars(saved []EnvVarMemento) {
 	for _, v := range saved {
 		printRestoration(v)
-		if v.unset {
-			_ = unsetenv(v.name)
+		if v.Unset {
+			_ = UnsetenvFn(v.Name)
 		} else {
-			_ = setenv(v.name, v.value)
+			_ = SetenvFn(v.Name, v.Value)
 		}
 	}
 }
 
-func checkEnvVars(input []envVar) bool {
+func checkEnvVars(input []EnvVarMemento) bool {
 	if len(input) == 0 {
 		return true
 	}
 	distinctVar := map[string]bool{}
 	for _, v := range input {
-		if distinctVar[v.name] {
-			printIt("code error: detected attempt to set environment variable", v.name, "twice")
+		if distinctVar[v.Name] {
+			printIt("code error: detected attempt to set environment variable", v.Name, "twice")
 			return false
 		}
-		distinctVar[v.name] = true
+		distinctVar[v.Name] = true
 	}
 	return true
 }
@@ -357,25 +375,27 @@ func printFormerEnvVarState(name, value string, defined bool) {
 	}
 }
 
-func setupEnvVars(input []envVar) ([]envVar, bool) {
+// SetupEnvVars executes the intent of the provided slice of EnvVarMementos, and returns a slice to be executed to
+// revert the directed changes
+func SetupEnvVars(input []EnvVarMemento) ([]EnvVarMemento, bool) {
 	if !checkEnvVars(input) {
 		return nil, false
 	}
-	savedEnvVars := make([]envVar, 0)
+	savedEnvVars := make([]EnvVarMemento, 0)
 	for _, envVariable := range input {
-		oldValue, defined := os.LookupEnv(envVariable.name)
-		printFormerEnvVarState(envVariable.name, oldValue, defined)
-		savedEnvVars = append(savedEnvVars, envVar{
-			name:  envVariable.name,
-			value: oldValue,
-			unset: !defined,
+		oldValue, defined := os.LookupEnv(envVariable.Name)
+		printFormerEnvVarState(envVariable.Name, oldValue, defined)
+		savedEnvVars = append(savedEnvVars, EnvVarMemento{
+			Name:  envVariable.Name,
+			Value: oldValue,
+			Unset: !defined,
 		})
-		if envVariable.unset {
-			printIt("unsetting", envVariable.name)
-			_ = unsetenv(envVariable.name)
+		if envVariable.Unset {
+			printIt("unsetting", envVariable.Name)
+			_ = UnsetenvFn(envVariable.Name)
 		} else {
-			printIt("setting", envVariable.name, "to", envVariable.value)
-			_ = setenv(envVariable.name, envVariable.value)
+			printIt("setting", envVariable.Name, "to", envVariable.Value)
+			_ = SetenvFn(envVariable.Name, envVariable.Value)
 		}
 	}
 	return savedEnvVars, true
@@ -395,23 +415,25 @@ func VulnerabilityCheck(a *goyek.A) bool {
 // found is not, in fact, a directory, or is, but does not contain a .git
 // subdirectory, calls exit. A successful call's value is cached.
 func WorkingDir() string {
-	if workingDir == "" {
+	if CachedWorkingDir == "" {
 		candidate := ".."
 		if dirValue, dirExists := os.LookupEnv("DIR"); dirExists {
 			candidate = dirValue
 		}
-		if isUnacceptableWorkingDir(candidate) {
-			exit(1)
+		if UnacceptableWorkingDir(candidate) {
+			ExitFn(1)
 		}
 		// ok, it's acceptable
-		workingDir = candidate
+		CachedWorkingDir = candidate
 	}
-	return workingDir
+	return CachedWorkingDir
 }
 
-func isUnacceptableWorkingDir(candidate string) bool {
+// UnacceptableWorkingDir determines whether a specified candidate directory could be the working directory for the
+// build. The candidate cannot be empty, must be a valid directory, and must contain a valid subdirectory named '.git'
+func UnacceptableWorkingDir(candidate string) bool {
 	if candidate == "" {
-		_, _ = fmt.Fprintln(os.Stderr, "code error: empty candidate value passed to isAcceptableWorkingDir")
+		fmt.Fprintln(os.Stderr, "code error: empty candidate value passed to isAcceptableWorkingDir")
 		return true
 	}
 	if isInvalidDir(candidate) {
@@ -424,7 +446,7 @@ func isUnacceptableWorkingDir(candidate string) bool {
 }
 
 func isInvalidDir(path string) bool {
-	pathIsConfirmedDir, err := afero.IsDir(fileSystem, path)
+	pathIsConfirmedDir, err := afero.IsDir(BuildFS, path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "validation error %v for %q", err, path)
 		return true
@@ -436,36 +458,38 @@ func isInvalidDir(path string) bool {
 	return false
 }
 
-func allDirs(top string) ([]string, error) {
+// AllDirs returns all directories in the directory specified by the top parameter, including that directory. Recurses.
+func AllDirs(top string) ([]string, error) {
 	var topIsDir bool
 	var err error
-	if topIsDir, err = afero.IsDir(fileSystem, top); err != nil {
+	if topIsDir, err = afero.IsDir(BuildFS, top); err != nil {
 		return nil, err
 	}
 	if !topIsDir {
 		return nil, fmt.Errorf("%q is not a directory", top)
 	}
-	top = canonicalizePath(top)
-	entries, _ := afero.ReadDir(fileSystem, top)
+	top = canonicalPath(top)
+	entries, _ := afero.ReadDir(BuildFS, top)
 	dirs := []string{top}
 	for _, entry := range entries {
 		if entry.IsDir() {
-			subDirs, _ := allDirs(filepath.Join(top, entry.Name()))
+			subDirs, _ := AllDirs(filepath.Join(top, entry.Name()))
 			dirs = append(dirs, subDirs...)
 		}
 	}
 	return dirs, nil
 }
 
-func relevantDirs(fileMatcher func(string) bool) ([]string, error) {
+// RelevantDirs returns the directories that contain files matching the provided fileMatcher
+func RelevantDirs(fileMatcher func(string) bool) ([]string, error) {
 	topDir := WorkingDir()
-	dirs, err := allDirs(topDir)
+	dirs, err := AllDirs(topDir)
 	if err != nil {
 		return nil, err
 	}
 	sourceDirectories := make([]string, 0)
 	for _, dir := range dirs {
-		if includesRelevantFiles(dir, fileMatcher) {
+		if IncludesRelevantFiles(dir, fileMatcher) {
 			sourceDir := strings.TrimPrefix(strings.TrimPrefix(dir, topDir), "/")
 			sourceDirectories = append(sourceDirectories, sourceDir)
 		}
@@ -473,20 +497,23 @@ func relevantDirs(fileMatcher func(string) bool) ([]string, error) {
 	return sourceDirectories, nil
 }
 
-func includesRelevantFiles(dir string, fileMatcher func(string) bool) bool {
-	entries, err := afero.ReadDir(fileSystem, dir)
+// IncludesRelevantFiles returns true if the provided directory contains any regular files whose names conform to the
+// fileMatcher
+func IncludesRelevantFiles(dir string, fileMatcher func(string) bool) bool {
+	entries, err := afero.ReadDir(BuildFS, dir)
 	if err != nil {
 		return false
 	}
 	for _, e := range entries {
-		if isRelevantFile(e, fileMatcher) {
+		if IsRelevantFile(e, fileMatcher) {
 			return true
 		}
 	}
 	return false
 }
 
-func isRelevantFile(entry fs.FileInfo, fileMatcher func(string) bool) bool {
+// IsRelevantFile returns true if the entry is a file and its name is validated by the provided fileMatcher
+func IsRelevantFile(entry fs.FileInfo, fileMatcher func(string) bool) bool {
 	if !entry.Mode().IsRegular() {
 		return false
 	}
@@ -505,5 +532,5 @@ func endsIn(s, suffix string) bool {
 }
 
 func printIt(a ...any) {
-	_, _ = printLine(a...)
+	_, _ = PrintlnFn(a...)
 }
