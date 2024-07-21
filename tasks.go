@@ -24,12 +24,12 @@ var (
 		"noformat",
 		false,
 		"set to remove custom formatting from dead code analysis")
-	// NoTestFlag is a flag for the AnalyzeDeadCode function to remove the -test parameter from the deadcode command
+	// NoTestFlag is a flag to remove the -test parameter from the deadcode command
 	NoTestFlag = flag.Bool(
 		"notest",
 		false,
 		"set to remove the -test parameter from dead code analysis")
-	// TemplateFlag is a flag to allow the caller to change the format template used by the deadcode command
+	// TemplateFlag is a flag that allows the caller to change the format template used by the deadcode command
 	TemplateFlag = flag.String(
 		"template",
 		`{{println .Path}}{{range .Funcs}}{{printf "\t%s\t%s\n" .Position .Name}}{{end}}{{println}}`,
