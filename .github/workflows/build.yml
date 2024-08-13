@@ -6,11 +6,11 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Check out source code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Fetch go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.22.5'
+          go-version: 1.22.6
       - name: Get dependencies
         run: go get -u ./...
       - name: Install linter
@@ -18,7 +18,7 @@ jobs:
       - name: Run linter
         run: gocritic check -enableAll ./... > lint-issues.txt
       - name: Post lint issues
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: lint results
           path: lint-issues.txt
@@ -27,14 +27,14 @@ jobs:
       - name: Run nilaway
         run: nilaway ./... > nilaway-issues.txt
       - name: Post nilaway issues
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: nilaway results
           path: nilaway-issues.txt
       - name: Run format check
         run: gofmt -d -e -l ./ > format-issues.txt
       - name: Post format issues
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: format results
           path: format-issues.txt
@@ -43,7 +43,7 @@ jobs:
       - name: Run vulnerability check
         uses: golang/govulncheck-action@v1
         with:
-          go-version-input: 1.22.5
+          go-version-input: 1.22.6
       - name: Execute unit tests with code coverage
         run: go test -coverprofile=coverage -covermode=atomic ./...
       - name: Upload coverage to Codecov
