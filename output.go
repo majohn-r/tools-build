@@ -11,16 +11,9 @@ var (
 	PrintlnFn = fmt.Println
 )
 
-// EatTrailingEOL removes trailing \n and \r characters from the end of a string; recurses.
+// EatTrailingEOL removes trailing \n and \r characters from the end of a string
 func EatTrailingEOL(s string) string {
-	switch {
-	case strings.HasSuffix(s, "\n"):
-		return EatTrailingEOL(strings.TrimSuffix(s, "\n"))
-	case strings.HasSuffix(s, "\r"):
-		return EatTrailingEOL(strings.TrimSuffix(s, "\r"))
-	default:
-		return s
-	}
+	return strings.TrimRight(s, "\n\r")
 }
 
 // PrintBuffer sends the buffer contents to stdout, but first strips trailing EOL characters, and then only prints the

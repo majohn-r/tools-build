@@ -1,6 +1,6 @@
 module github.com/majohn-r/tools-build
 
-go 1.22
+go 1.23
 
 require (
 	github.com/goyek/goyek/v2 v2.2.0

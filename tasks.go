@@ -19,6 +19,11 @@ var (
 		false,
 		"set to make dependency updates more aggressive",
 	)
+	disableFlag = flag.String(
+		"disable",
+		"",
+		"set to a comma-delimited set of tasks to disable",
+	)
 	// NoFormatFlag is a flag to disable formatting from the deadcode command
 	NoFormatFlag = flag.Bool(
 		"noformat",
@@ -189,6 +194,20 @@ func NilAway(a *goyek.A) bool {
 func RunCommand(a *goyek.A, command string) bool {
 	dc := directedCommand{command: command, dir: WorkingDir()}
 	return dc.execute(a)
+}
+
+// TaskDisabled returns true if the provided taskName matches (case-insensitively)
+// one of the comma-delimited values in the disable flag's value
+func TaskDisabled(taskName string) (disabled bool) {
+	disabledTasks := *disableFlag
+	tasks := strings.Split(disabledTasks, ",")
+	for _, task := range tasks {
+		if strings.EqualFold(taskName, strings.Trim(task, " ")) {
+			disabled = true
+			break
+		}
+	}
+	return
 }
 
 // UnitTests runs all unit tests, with code coverage enabled; returns false on

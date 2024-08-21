@@ -956,3 +956,35 @@ func Test_directedCommand_execute(t *testing.T) {
 		})
 	}
 }
+
+func TestTaskDisabled(t *testing.T) {
+	originalDisableFlag := disableFlag
+	defer func() {
+		disableFlag = originalDisableFlag
+	}()
+	tests := map[string]struct {
+		taskName     string
+		disableValue string
+		wantDisabled bool
+	}{
+		"typical": {
+			taskName:     "nilaway",
+			disableValue: "",
+			wantDisabled: false,
+		},
+		"real use case": {
+			taskName:     "nilaway",
+			disableValue: "task1, task2, NilAway ",
+			wantDisabled: true,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			flag := tt.disableValue
+			disableFlag = &flag
+			if gotDisabled := TaskDisabled(tt.taskName); gotDisabled != tt.wantDisabled {
+				t.Errorf("TaskDisabled() = %v, want %v", gotDisabled, tt.wantDisabled)
+			}
+		})
+	}
+}
