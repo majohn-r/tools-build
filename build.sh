@@ -13,9 +13,6 @@ go mod tidy
 echo "lint"
 go install -v github.com/go-critic/go-critic/cmd/gocritic@latest
 gocritic check -enableAll ./...
-#echo "nilaway"
-#go install -v go.uber.org/nilaway/cmd/nilaway@latest
-#nilaway ./...
 echo "format"
 gofmt -e -l -s -w .
 echo "vulnerability check"
