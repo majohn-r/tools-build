@@ -1,6 +1,6 @@
 module github.com/majohn-r/tools-build
 
-go 1.24
+go 1.25
 
 require (
 	github.com/goyek/goyek/v2 v2.3.0
@@ -10,5 +10,5 @@ require (
 
 require (
 	github.com/mattn/go-shellwords v1.0.12 // indirect
-	golang.org/x/text v0.27.0 // indirect
+	golang.org/x/text v0.28.0 // indirect
 )
