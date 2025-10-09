@@ -10,6 +10,12 @@ Key to symbols
 - 😒 change is invisible to the user
 - 🆕 new feature
 
+## v0.13.3
+
+_release `2025-10-09`_
+
+- 😒 update dependencies
+
 ## v0.13.2
 
 _release `2025-08-29`_
