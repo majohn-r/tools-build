@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"github.com/goyek/goyek/v2"
-	"github.com/goyek/x/cmd"
-	"github.com/spf13/afero"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/goyek/goyek/v3"
+	"github.com/goyek/x/cmd"
+	"github.com/spf13/afero"
 )
 
 var (

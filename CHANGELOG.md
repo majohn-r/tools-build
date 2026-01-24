@@ -10,6 +10,15 @@ Key to symbols
 - 😒 change is invisible to the user
 - 🆕 new feature
 
+## v0.14.0
+
+_release `2026-01-24`_
+
+- ⚠️ update dependencies. Since the previous update, goyek released a new major version (v3). This release uses that
+new version. **Consuming projects will need to upgrade as well.** Releasing this project with a bump in the minor
+version, as the [changes in goyek](https://github.com/goyek/goyek/pull/532) do not appear to break existing usage;
+also, this does not seem to be the kind of change that forces a version 1.
+
 ## v0.13.3
 
 _release `2025-10-09`_

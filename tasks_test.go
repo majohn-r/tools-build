@@ -1,13 +1,14 @@
 package tools_build
 
 import (
-	"github.com/goyek/goyek/v2"
-	"github.com/goyek/x/cmd"
-	"github.com/spf13/afero"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/goyek/goyek/v3"
+	"github.com/goyek/x/cmd"
+	"github.com/spf13/afero"
 )
 
 func TestDeadcode(t *testing.T) {

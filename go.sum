@@ -1,10 +1,10 @@
-github.com/goyek/goyek/v2 v2.3.0 h1:ZQlQZp+JOkbZXuPNw6SbeQxYMRKB0Gm3nbC2K9IY1r4=
-github.com/goyek/goyek/v2 v2.3.0/go.mod h1:VKzmleKfV5LB9f20Xg5umuPC4XfSdDXwPNesfr1RsLU=
-github.com/goyek/x v0.3.0 h1:JEgcLmqnxAPFR7/IqPMBoSRUcvykNS3o7YCVrC1VKHQ=
-github.com/goyek/x v0.3.0/go.mod h1:mgGZpAHdFAW9vEpq+aGFF36DTo/zRjmE7z4BMKVqD7g=
+github.com/goyek/goyek/v3 v3.0.1 h1:HU2wbAwKujmCnywxRD4GpPcEDjRWspngW8x7MJG9V7E=
+github.com/goyek/goyek/v3 v3.0.1/go.mod h1:+s6hMsSBkg3ph3o6ImXU5bY+azWRh3eKRwrhIqxuz0U=
+github.com/goyek/x v0.4.0 h1:o/O7CJ0wLH/XN1QkruJ84og7ZKQmUImLoZQfjv3K9WY=
+github.com/goyek/x v0.4.0/go.mod h1:K6l/1A3AIPhGjWvL1j0YXgsuvk2ktSaMhiRygTePcd8=
 github.com/mattn/go-shellwords v1.0.12 h1:M2zGm7EW6UQJvDeQxo4T51eKPurbeFbe8WtebGE2xrk=
 github.com/mattn/go-shellwords v1.0.12/go.mod h1:EZzvwXDESEeg03EKmM+RmDnNOPKG4lLtQsUlTZDWQ8Y=
 github.com/spf13/afero v1.15.0 h1:b/YBCLWAJdFWJTN9cLhiXXcD7mzKn9Dm86dNnfyQw1I=
 github.com/spf13/afero v1.15.0/go.mod h1:NC2ByUVxtQs4b3sIUphxK0NioZnmxgyCrfzeuq8lxMg=
-golang.org/x/text v0.30.0 h1:yznKA/E9zq54KzlzBEAWn1NXSQ8DIp/NYMy88xJjl4k=
-golang.org/x/text v0.30.0/go.mod h1:yDdHFIX9t+tORqspjENWgzaCVXgk0yYnYuSZ8UzzBVM=
+golang.org/x/text v0.33.0 h1:B3njUFyqtHDUI5jMn1YIr5B0IE2U0qck04r6d4KPAxE=
+golang.org/x/text v0.33.0/go.mod h1:LuMebE6+rBincTi9+xWTY8TztLzKHc/9C1uBCG27+q8=
