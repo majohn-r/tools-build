@@ -10,5 +10,5 @@ require (
 
 require (
 	github.com/mattn/go-shellwords v1.0.12 // indirect
-	golang.org/x/text v0.33.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
 )

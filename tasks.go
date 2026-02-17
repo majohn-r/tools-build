@@ -201,8 +201,8 @@ func RunCommand(a *goyek.A, command string) bool {
 // one of the comma-delimited values in the disable flag's value
 func TaskDisabled(taskName string) (disabled bool) {
 	disabledTasks := *disableFlag
-	tasks := strings.Split(disabledTasks, ",")
-	for _, task := range tasks {
+	tasks := strings.SplitSeq(disabledTasks, ",")
+	for task := range tasks {
 		if strings.EqualFold(taskName, strings.Trim(task, " ")) {
 			disabled = true
 			break
