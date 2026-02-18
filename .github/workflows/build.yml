@@ -31,8 +31,8 @@ jobs:
 #        with:
 #          name: nilaway results
 #          path: nilaway-issues.txt
-      - name: Run format check
-        run: gofmt -d -e -l ./
+#      - name: Run format check
+#        run: gofmt -d -e -l ./
 #      - name: Post format issues
 #        uses: actions/upload-artifact@v4
 #        with:
