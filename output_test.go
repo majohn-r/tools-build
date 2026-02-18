@@ -6,6 +6,8 @@ import (
 	"testing"
 )
 
+// copyright 2026 Marc Johnson
+
 func TestEatTrailingEOL(t *testing.T) {
 	tests := map[string]struct {
 		s    string

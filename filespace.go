@@ -2,12 +2,15 @@ package tools_build
 
 import (
 	"fmt"
-	"github.com/spf13/afero"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/spf13/afero"
 )
+
+// copyright 2026 Marc Johnson
 
 var (
 	// BuildFS is the file system used; accessible so that tests can override it

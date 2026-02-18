@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+// copyright 2026 Marc Johnson
+
 func TestRestoreEnvVars(t *testing.T) {
 	originalSetenvFn := SetenvFn
 	originalUnsetenvFn := UnsetenvFn

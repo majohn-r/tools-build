@@ -13,6 +13,8 @@ import (
 	"github.com/spf13/afero"
 )
 
+// copyright 2026 Marc Johnson
+
 var (
 	// AggressiveFlag is a flag for the UpdateDependencies function to more aggressively get updates
 	AggressiveFlag = flag.Bool(

@@ -1,14 +1,17 @@
 package tools_build
 
 import (
-	"github.com/spf13/afero"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/spf13/afero"
 )
+
+// copyright 2026 Marc Johnson
 
 const (
 	dirMode  = 0o755

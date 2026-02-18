@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/afero"
 )
 
+// copyright 2026 Marc Johnson
+
 func TestDeadcode(t *testing.T) {
 	originalCachedWorkingDir := CachedWorkingDir
 	originalExecFn := ExecFn
