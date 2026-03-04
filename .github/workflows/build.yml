@@ -31,13 +31,8 @@ jobs:
 #        with:
 #          name: nilaway results
 #          path: nilaway-issues.txt
-#      - name: Run format check
-#        run: gofmt -d -e -l ./
-#      - name: Post format issues
-#        uses: actions/upload-artifact@v4
-#        with:
-#          name: format results
-#          path: format-issues.txt
+      - name: Run format check
+        run: gofmt -d -e -l ./
       - name: Get vulnerability check program
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: Run vulnerability check

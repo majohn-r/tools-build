@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/afero"
 )
 
-// copyright 2026 Marc Johnson
+// Copyright © 2026 Marc Johnson (marc.johnson27591@gmail.com)
 
 var (
 	// BuildFS is the file system used; accessible so that tests can override it

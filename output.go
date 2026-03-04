@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// copyright 2026 Marc Johnson
+// Copyright © 2026 Marc Johnson (marc.johnson27591@gmail.com)
 
 var (
 	// PrintlnFn is the fmt.Println function, set as a variable so that unit tests can override

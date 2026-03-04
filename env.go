@@ -2,7 +2,7 @@ package tools_build
 
 import "os"
 
-// copyright 2026 Marc Johnson
+// Copyright © 2026 Marc Johnson (marc.johnson27591@gmail.com)
 
 var (
 	// SetenvFn is the os.Setenv function, set as a variable so that unit tests can override
