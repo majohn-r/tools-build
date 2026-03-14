@@ -10,6 +10,12 @@ Key to symbols
 - 😒 change is invisible to the user
 - 🆕 new feature
 
+## v0.15.0
+
+_release `2026-03-14`_
+
+- 🆕 add GoFix task
+
 ## v0.14.2
 
 _release `2026-02-17`_

@@ -991,3 +991,119 @@ func TestTaskDisabled(t *testing.T) {
 		})
 	}
 }
+
+func TestGoFix(t *testing.T) {
+	originalExecFn := ExecFn
+	originalCmdOutput := cmdOutput
+	originalCachedWorkingDir := CachedWorkingDir
+	defer func() {
+		ExecFn = originalExecFn
+		cmdOutput = originalCmdOutput
+		CachedWorkingDir = originalCachedWorkingDir
+	}()
+	CachedWorkingDir = "no one cares"
+	tests := map[string]struct {
+		diffSucceeds bool
+		diffOutput   string
+		fixSucceeds  bool
+		fixRuns      bool
+		want         bool
+	}{
+		"diff fails": {
+			diffSucceeds: false,
+			want:         false,
+		},
+		"diff finds no changes": {
+			diffSucceeds: true,
+			diffOutput:   "",
+			want:         true,
+		},
+		"diff finds changes but fix fails": {
+			diffSucceeds: true,
+			diffOutput: "" +
+				"--- dir/file.go (old)\n" +
+				"+++ dir/file.go (new)\n" +
+				"-                       eq := strings.IndexByte(pair, '=')\n" +
+				"-                       result[pair[:eq]] = pair[1+eq:]\n" +
+				"+                       before, after, _ := strings.Cut(pair, \"=\")\n" +
+				"+                       result[before] = after\n" +
+				"…",
+			fixSucceeds: false,
+			fixRuns:     true,
+			want:        false,
+		},
+		"diff finds changes and fix implements them": {
+			diffSucceeds: true,
+			diffOutput: "" +
+				"--- dir/file.go (old)\n" +
+				"+++ dir/file.go (new)\n" +
+				"-                       eq := strings.IndexByte(pair, '=')\n" +
+				"-                       result[pair[:eq]] = pair[1+eq:]\n" +
+				"+                       before, after, _ := strings.Cut(pair, \"=\")\n" +
+				"+                       result[before] = after\n" +
+				"…",
+			fixSucceeds: true,
+			fixRuns:     true,
+			want:        true,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			fixRuns := false
+			cmdOutput = func(_ *goyek.A, cmd string) (bool, string) {
+				return tt.diffSucceeds, tt.diffOutput
+			}
+			// ExecFn only runs once because we're overriding the cmdOutput function and the override doesn't call ExecFn
+			ExecFn = func(_ *goyek.A, cmd string, _ ...cmd.Option) bool {
+				fixRuns = true
+				return tt.fixSucceeds
+			}
+			if got := GoFix(nil); got != tt.want {
+				t.Errorf("GoFix() = %v, want %v", got, tt.want)
+			}
+			if fixRuns != tt.fixRuns {
+				t.Errorf("GoFix fix run = %v, want %v", fixRuns, tt.fixRuns)
+			}
+		})
+	}
+}
+
+func Test_commandOutput(t *testing.T) {
+	originalExecFn := ExecFn
+	originalCachedWorkingDir := CachedWorkingDir
+	defer func() {
+		ExecFn = originalExecFn
+		CachedWorkingDir = originalCachedWorkingDir
+	}()
+	CachedWorkingDir = "no one cares"
+	tests := map[string]struct {
+		execSucceeds bool
+		wantState    bool
+		wantS        string
+	}{
+		"success": {
+			execSucceeds: true,
+			wantState:    true,
+			wantS:        "",
+		},
+		"fail": {
+			execSucceeds: false,
+			wantState:    false,
+			wantS:        "",
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ExecFn = func(a *goyek.A, cmd string, _ ...cmd.Option) bool {
+				return tt.execSucceeds
+			}
+			gotState, gotS := commandOutput(nil, "")
+			if gotState != tt.wantState {
+				t.Errorf("commandOutput() gotState = %v, want %v", gotState, tt.wantState)
+			}
+			if gotS != tt.wantS {
+				t.Errorf("commandOutput() gotS = %v, want %v", gotS, tt.wantS)
+			}
+		})
+	}
+}

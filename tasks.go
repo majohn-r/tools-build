@@ -165,6 +165,40 @@ func GenerateDocumentation(a *goyek.A, excludedDirs []string) bool {
 	return true
 }
 
+var cmdOutput = commandOutput
+
+// GoFix runs the go fix command and displays the changes, if any
+func GoFix(a *goyek.A) bool {
+	printIt("running go fix")
+	state, diffs := cmdOutput(a, "go fix -diff ./...")
+	if !state {
+		return false
+	}
+	status := true
+	if diffs == "" {
+		printIt("no differences found")
+	} else {
+		status = RunCommand(a, "go fix ./...")
+		if status {
+			printIt(diffs)
+		}
+	}
+	return status
+}
+
+func commandOutput(a *goyek.A, command string) (state bool, s string) {
+	outputBuffer := &bytes.Buffer{}
+	options := make([]cmd.Option, 3)
+	options[0] = cmd.Dir(WorkingDir())
+	options[1] = cmd.Stderr(outputBuffer)
+	options[2] = cmd.Stdout(outputBuffer)
+	state = ExecFn(a, command, options...)
+	if state {
+		s = EatTrailingEOL(outputBuffer.String())
+	}
+	return
+}
+
 // Install runs the command to install the '@latest' version of a specified
 // package; returns false on failure
 func Install(a *goyek.A, packageName string) bool {
